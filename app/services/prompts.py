@@ -3,6 +3,7 @@ Prompt management system with versioning
 """
 import asyncpg
 import logging
+import os
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional, List
 from dataclasses import dataclass
@@ -27,7 +28,7 @@ class PromptManager:
         Args:
             db_url: PostgreSQL connection URL, defaults to in-memory if None
         """
-        self.db_url = db_url or "postgresql://localhost/soc_prompts"
+        self.db_url = db_url or os.getenv("POSTGRES_URL", "postgresql://soc_user:soc_password@localhost:5432/soc_platform")
         self.db_pool = None
         self._default_prompts = self._get_default_prompts()
     
@@ -345,6 +346,107 @@ Focus on providing relevant, accurate historical context and procedural guidance
             
             return prompts
     
+    async def get_info(self, agent_name: str, version: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Get prompt metadata information
+        
+        Args:
+            agent_name: Name of the agent
+            version: Specific version to retrieve, None for latest
+            
+        Returns:
+            Dictionary with version, created_at, modified_by info
+        """
+        if not self.db_pool:
+            await self._ensure_db_connection()
+        
+        if self.db_pool:
+            async with self.db_pool.acquire() as conn:
+                if version:
+                    # Get specific version info
+                    row = await conn.fetchrow(
+                        "SELECT version, created_at, modified_by FROM agent_prompts WHERE agent_name = $1 AND version = $2",
+                        agent_name, version
+                    )
+                else:
+                    # Get latest version info
+                    row = await conn.fetchrow(
+                        """SELECT version, created_at, modified_by FROM agent_prompts 
+                           WHERE agent_name = $1 AND is_active = true
+                           ORDER BY created_at DESC LIMIT 1""",
+                        agent_name
+                    )
+                
+                if row:
+                    return {
+                        "version": row["version"],
+                        "created_at": row["created_at"].isoformat(),
+                        "modified_by": row["modified_by"]
+                    }
+        
+        # Fallback to default
+        return {
+            "version": "v1.0",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "modified_by": "system"
+        }
+    
+    async def get_latest(self, agent_name: str) -> str:
+        """
+        Get latest prompt content for an agent
+        
+        Args:
+            agent_name: Name of the agent
+            
+        Returns:
+            Latest prompt content string
+        """
+        return await self.get(agent_name, version=None)
+    
+    async def update(self, agent_name: str, content: str, modified_by: str) -> str:
+        """
+        Update prompt for an agent (creates new version)
+        
+        Args:
+            agent_name: Name of the agent
+            content: New prompt content
+            modified_by: Who is making the update
+            
+        Returns:
+            New version string
+        """
+        if not self.db_pool:
+            await self._ensure_db_connection()
+        
+        if not self.db_pool:
+            raise Exception("Database not available")
+        
+        # Generate new version
+        current_info = await self.get_info(agent_name)
+        current_version = current_info.get("version", "v1.0")
+        
+        # Parse version and increment
+        if current_version.startswith("v"):
+            try:
+                version_num = float(current_version[1:])
+                new_version = f"v{version_num + 0.1:.1f}"
+            except:
+                new_version = "v1.1"
+        else:
+            new_version = "v1.1"
+        
+        # Insert new version
+        async with self.db_pool.acquire() as conn:
+            prompt_id = f"pmt_{uuid.uuid4().hex[:8]}"
+            await conn.execute(
+                """INSERT INTO agent_prompts (id, agent_name, version, created_at, content, modified_by, is_active)
+                   VALUES ($1, $2, $3, $4, $5, $6, true)""",
+                prompt_id, agent_name, new_version, datetime.now(timezone.utc), content, modified_by
+            )
+        
+        logger.info(f"Updated prompt for {agent_name} to version {new_version}")
+        return new_version
+
     async def get_all_agents(self) -> List[str]:
         """Get list of all agents with prompts"""
         if not self.db_pool:

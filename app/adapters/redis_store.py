@@ -137,6 +137,20 @@ class RedisStore:
                 if alert_data:
                     return self._deserialize_case(alert_data)
                 
+                # Try alert_id: pattern
+                alert_id_data = await self.client.hgetall(f"alert_id:{case_or_alert_id}")
+                if alert_id_data:
+                    return self._deserialize_case(alert_id_data)
+                
+                # Try investigation keys - this is where the real case data is stored
+                investigation_keys = await self.client.keys(f"investigation:inv_{case_or_alert_id}_*")
+                if investigation_keys:
+                    # Get the most recent investigation
+                    latest_key = max(investigation_keys)
+                    investigation_data = await self.client.get(latest_key)
+                    if investigation_data:
+                        return self._deserialize_investigation_case(json.loads(investigation_data))
+                
             except Exception as e:
                 logger.error(f"Error retrieving case summary: {e}")
         
@@ -159,6 +173,72 @@ class RedisStore:
             }
         except json.JSONDecodeError as e:
             logger.error(f"Failed to deserialize case data: {e}")
+            return {}
+    
+    def _deserialize_investigation_case(self, investigation_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Deserialize investigation data from Redis into case format"""
+        try:
+            results = investigation_data.get('results', {})
+            agent_response = results.get('agent_response', {})
+            metadata = agent_response.get('metadata', {})
+            exabeam_case = metadata.get('exabeam_case', {})
+            
+            # Extract case information
+            case_id = investigation_data.get('case_id', '')
+            
+            # Get timeline events for description
+            timeline_events = exabeam_case.get('timeline_events', [])
+            
+            # Create description from events
+            description_parts = []
+            if timeline_events:
+                description_parts.append(f"Investigation of case {case_id} with {len(timeline_events)} forensic events analyzed.")
+                for event in timeline_events[:3]:  # Show first 3 events
+                    desc = event.get('description', 'Unknown event')
+                    timestamp = event.get('timestamp', 'Unknown time')
+                    description_parts.append(f"- {timestamp}: {desc}")
+                if len(timeline_events) > 3:
+                    description_parts.append(f"... and {len(timeline_events) - 3} more events")
+            
+            description = "\n".join(description_parts) if description_parts else agent_response.get('content', 'Investigation case')
+            
+            # Extract entities from the metadata
+            entities_data = metadata.get('entities', {})
+            
+            # Determine severity based on risk score
+            risk_score = exabeam_case.get('threat_score', 0)
+            if risk_score >= 80:
+                severity = 'CRITICAL'
+            elif risk_score >= 60:
+                severity = 'HIGH'
+            elif risk_score >= 40:
+                severity = 'MEDIUM'
+            else:
+                severity = 'LOW'
+            
+            return {
+                'case_id': case_id,
+                'alert_id': exabeam_case.get('case_id', case_id),
+                'title': exabeam_case.get('title') or f'Security Investigation: {case_id}',
+                'description': description,
+                'severity': severity,
+                'status': investigation_data.get('status', 'completed').upper(),
+                'created_at': investigation_data.get('created_at', ''),
+                'entities': entities_data,
+                'raw_data': {
+                    'investigation_id': investigation_data.get('investigation_id', ''),
+                    'confidence': results.get('confidence', 0.0),
+                    'response_type': results.get('response_type', 'evidence_analysis'),
+                    'threat_score': risk_score,
+                    'mitre_tactics': metadata.get('mitre_tactics', []),
+                    'mitre_techniques': metadata.get('mitre_techniques', []),
+                    'timeline_events': timeline_events,
+                    'exabeam_case': exabeam_case
+                }
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to deserialize investigation data: {e}")
             return {}
     
     def _get_mock_case_summary(self, case_id: str) -> Dict[str, Any]:
@@ -239,10 +319,9 @@ class RedisStore:
         try:
             similar_cases = []
             
-            # Get all case IDs
+            # Search traditional case keys
             case_keys = await self.client.keys("case:*")
-            
-            for case_key in case_keys[:50]:  # Limit search for performance
+            for case_key in case_keys[:25]:  # Limit search for performance
                 case_data = await self.client.hgetall(case_key)
                 if not case_data:
                     continue
@@ -264,10 +343,46 @@ class RedisStore:
                     )
                     similar_cases.append(similar_case)
             
-            # Sort by similarity score
-            similar_cases.sort(key=lambda x: x.similarity_score, reverse=True)
+            # Search investigation keys for additional cases
+            investigation_keys = await self.client.keys("investigation:*")
+            for investigation_key in investigation_keys[:25]:  # Limit search for performance
+                try:
+                    investigation_raw = await self.client.get(investigation_key)
+                    if not investigation_raw:
+                        continue
+                    
+                    investigation_data = json.loads(investigation_raw)
+                    case_summary = self._deserialize_investigation_case(investigation_data)
+                    case_entities = case_summary.get('entities', {})
+                    
+                    # Calculate entity-based similarity
+                    similarity_score, matched_entities = self._calculate_entity_similarity(
+                        target_entities, case_entities
+                    )
+                    
+                    if similarity_score >= min_similarity:
+                        similar_case = SimilarCase(
+                            case_id=case_summary['case_id'],
+                            similarity_score=similarity_score,
+                            matched_entities=matched_entities,
+                            summary=case_summary['title']
+                        )
+                        similar_cases.append(similar_case)
+                        
+                except (json.JSONDecodeError, KeyError) as e:
+                    logger.debug(f"Could not parse investigation data from {investigation_key}: {e}")
+                    continue
             
-            return similar_cases[:limit]
+            # Remove duplicates based on case_id and sort by similarity score
+            seen_cases = {}
+            for case in similar_cases:
+                if case.case_id not in seen_cases or case.similarity_score > seen_cases[case.case_id].similarity_score:
+                    seen_cases[case.case_id] = case
+            
+            unique_similar_cases = list(seen_cases.values())
+            unique_similar_cases.sort(key=lambda x: x.similarity_score, reverse=True)
+            
+            return unique_similar_cases[:limit]
             
         except Exception as e:
             logger.error(f"Error finding similar cases: {e}")

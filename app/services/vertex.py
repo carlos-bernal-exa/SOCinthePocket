@@ -1,28 +1,45 @@
 """
 Vertex AI Gemini wrapper with token tracking and cost calculation
-Mock implementation for initial testing
+Real implementation with Google Cloud Vertex AI
 """
 import os
 import json
 import asyncio
-import random
 from typing import Dict, Any, Tuple, Optional
 import logging
 
+try:
+    import vertexai
+    from vertexai.generative_models import GenerativeModel
+    VERTEXAI_AVAILABLE = True
+except ImportError:
+    VERTEXAI_AVAILABLE = False
+
 logger = logging.getLogger(__name__)
 
-# Model pricing per million tokens (USD)
+# Model pricing per million tokens (USD) - matches 05_Vertex_and_Tokens.md
 MODEL_PRICING = {
-    "gemini-2.5-pro": {"input": 3.50, "output": 10.50},
-    "gemini-2.5-flash": {"input": 0.35, "output": 1.40},
-    "gemini-2.5-flash-lite": {"input": 0.05, "output": 0.20}
+    "gemini-2.5-pro": {"input": 3.50, "output": 3.50},  # $3.50 / 1M tokens
+    "gemini-2.5-flash": {"input": 0.35, "output": 0.35},  # $0.35 / 1M
+    "gemini-2.5-flash-lite": {"input": 0.05, "output": 0.05}  # $0.05 / 1M
 }
 
 class VertexAIService:
     def __init__(self):
-        self.project_id = "threatexplainer"
-        self.location = "us-central1"
-        logger.info("VertexAI Service initialized (mock mode)")
+        self.project_id = os.getenv("GOOGLE_CLOUD_PROJECT", "threatexplainer")
+        self.location = os.getenv("GOOGLE_CLOUD_REGION", "us-central1")
+        self.initialized = False
+        
+        if VERTEXAI_AVAILABLE:
+            try:
+                vertexai.init(project=self.project_id, location=self.location)
+                self.initialized = True
+                logger.info(f"VertexAI Service initialized - Project: {self.project_id}, Region: {self.location}")
+            except Exception as e:
+                logger.error(f"Failed to initialize Vertex AI: {e}")
+                logger.info("Falling back to mock mode")
+        else:
+            logger.warning("Vertex AI package not available, using mock mode")
     
     def _calculate_cost(self, model: str, input_tokens: int, output_tokens: int) -> float:
         """Calculate cost in USD based on token usage and model pricing"""
@@ -108,46 +125,17 @@ class VertexAIService:
         **kwargs
     ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         """
-        Mock Gemini model execution with realistic token tracking
+        Real Gemini model execution via Vertex AI
         """
         try:
-            # Simulate processing time
-            await asyncio.sleep(0.5)
-            
-            # Generate mock response
-            response_text = self._mock_response_for_agent(agent_name, prompt)
-            
-            # Simulate realistic token counts
-            input_tokens = len(prompt.split()) * 1.3  # Approximate tokenization
-            output_tokens = len(response_text.split()) * 1.3
-            total_tokens = int(input_tokens + output_tokens)
-            input_tokens = int(input_tokens)
-            output_tokens = int(output_tokens)
-            
-            # Calculate cost
-            cost_usd = self._calculate_cost(model, input_tokens, output_tokens)
-            
-            # Prepare response
-            response_dict = {
-                "text": response_text,
-                "model": model,
-                "finish_reason": "stop",
-                "mock_mode": True
-            }
-            
-            token_usage = {
-                "input_tokens": input_tokens,
-                "output_tokens": output_tokens,
-                "total_tokens": total_tokens,
-                "cost_usd": cost_usd
-            }
-            
-            logger.info(f"Mock Gemini {model} - Input: {input_tokens}, Output: {output_tokens}, Cost: ${cost_usd}")
-            
-            return response_dict, token_usage
-            
+            if self.initialized and VERTEXAI_AVAILABLE:
+                return await self._run_real_gemini(model, prompt, system_instruction, temperature, max_output_tokens)
+            else:
+                logger.warning(f"Vertex AI not available, using mock for {model}")
+                return await self._run_mock_gemini(model, prompt, agent_name)
+                
         except Exception as e:
-            logger.error(f"Error in mock Gemini {model}: {e}")
+            logger.error(f"Error in Gemini {model}: {e}")
             # Return error response with zero token usage
             error_response = {
                 "text": f"Error: {str(e)}",
@@ -162,6 +150,112 @@ class VertexAIService:
                 "cost_usd": 0.0
             }
             return error_response, zero_usage
+    
+    async def _run_real_gemini(
+        self, 
+        model: str, 
+        prompt: str, 
+        system_instruction: Optional[str] = None,
+        temperature: float = 0.1,
+        max_output_tokens: int = 8192
+    ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        """Execute real Gemini API call"""
+        try:
+            # Initialize the model
+            gemini_model = GenerativeModel(model_name=model, system_instruction=system_instruction)
+            
+            # Configure generation parameters
+            generation_config = {
+                "temperature": temperature,
+                "max_output_tokens": max_output_tokens,
+            }
+            
+            # Make the API call
+            response = await asyncio.to_thread(
+                gemini_model.generate_content,
+                prompt,
+                generation_config=generation_config
+            )
+            
+            # Extract response text
+            response_text = response.text if hasattr(response, 'text') else str(response)
+            
+            # Extract token usage if available
+            if hasattr(response, 'usage_metadata'):
+                usage = response.usage_metadata
+                input_tokens = getattr(usage, 'prompt_token_count', 0)
+                output_tokens = getattr(usage, 'candidates_token_count', 0)
+                total_tokens = getattr(usage, 'total_token_count', input_tokens + output_tokens)
+            else:
+                # Fallback estimation
+                input_tokens = len(prompt.split()) * 1.3
+                output_tokens = len(response_text.split()) * 1.3
+                total_tokens = int(input_tokens + output_tokens)
+                input_tokens = int(input_tokens)
+                output_tokens = int(output_tokens)
+            
+            # Calculate cost
+            cost_usd = self._calculate_cost(model, input_tokens, output_tokens)
+            
+            # Prepare response
+            response_dict = {
+                "text": response_text,
+                "model": model,
+                "finish_reason": "stop",
+                "real_mode": True
+            }
+            
+            token_usage = {
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+                "total_tokens": total_tokens,
+                "cost_usd": cost_usd
+            }
+            
+            logger.info(f"Real Gemini {model} - Input: {input_tokens}, Output: {output_tokens}, Cost: ${cost_usd}")
+            
+            return response_dict, token_usage
+            
+        except Exception as e:
+            logger.error(f"Real Gemini API error: {e}")
+            raise
+    
+    async def _run_mock_gemini(self, model: str, prompt: str, agent_name: str) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        """Fallback mock implementation"""
+        # Simulate processing time
+        await asyncio.sleep(0.5)
+        
+        # Generate mock response
+        response_text = self._mock_response_for_agent(agent_name, prompt)
+        
+        # Simulate realistic token counts
+        input_tokens = len(prompt.split()) * 1.3  # Approximate tokenization
+        output_tokens = len(response_text.split()) * 1.3
+        total_tokens = int(input_tokens + output_tokens)
+        input_tokens = int(input_tokens)
+        output_tokens = int(output_tokens)
+        
+        # Calculate cost
+        cost_usd = self._calculate_cost(model, input_tokens, output_tokens)
+        
+        # Prepare response
+        response_dict = {
+            "text": response_text,
+            "model": model,
+            "finish_reason": "stop",
+            "mock_mode": True
+        }
+        
+        token_usage = {
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "total_tokens": total_tokens,
+            "cost_usd": cost_usd
+        }
+        
+        logger.info(f"Mock Gemini {model} - Input: {input_tokens}, Output: {output_tokens}, Cost: ${cost_usd}")
+        
+        return response_dict, token_usage
 
 # Global service instance
 vertex_service = VertexAIService()

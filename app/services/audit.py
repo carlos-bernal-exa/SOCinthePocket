@@ -57,7 +57,7 @@ class AuditLogger:
             db_url: PostgreSQL connection URL, defaults to in-memory if None
             use_signatures: Whether to use Ed25519 signatures for tamper evidence
         """
-        self.db_url = db_url or "postgresql://localhost/soc_audit"
+        self.db_url = db_url or os.getenv("POSTGRES_URL", "postgresql://soc_user:soc_password@localhost:5432/soc_platform")
         self.use_signatures = use_signatures
         self.db_pool = None
         self.private_key = None
@@ -189,7 +189,7 @@ class AuditLogger:
             step_id = f"stp_{uuid.uuid4().hex[:12]}"
             
             # Get current timestamp
-            timestamp = datetime.now(timezone.utc).isoformat()
+            timestamp = datetime.now(timezone.utc)
             
             # Get previous hash for chaining
             case_id = step.get('case_id')
@@ -200,7 +200,7 @@ class AuditLogger:
                 "version": step.get('version', '1.0'),
                 "case_id": case_id,
                 "step_id": step_id,
-                "timestamp": timestamp,
+                "timestamp": timestamp.isoformat(),
                 "agent": step.get('agent', {"name": "Unknown", "role": "unknown", "model": "unknown"}),
                 "prompt_version": step.get('prompt_version', 'unknown'),
                 "autonomy_level": step.get('autonomy_level', 'L1_SUGGEST'),
@@ -246,7 +246,7 @@ class AuditLogger:
             )
             
             # Store in database
-            await self._store_step(agent_step)
+            await self._store_step(agent_step, timestamp)
             
             logger.info(f"Audit step {step_id} appended for case {case_id}")
             return agent_step
@@ -255,7 +255,7 @@ class AuditLogger:
             logger.error(f"Failed to append audit step: {e}")
             raise
     
-    async def _store_step(self, step: AgentStep):
+    async def _store_step(self, step: AgentStep, timestamp: datetime = None):
         """Store the step in the database"""
         if not self.db_pool:
             await self._ensure_db_connection()
@@ -272,7 +272,7 @@ class AuditLogger:
                     observations, outputs, token_usage, prev_hash, hash, signature
                 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
             """,
-                step.version, step.case_id, step.step_id, step.timestamp,
+                step.version, step.case_id, step.step_id, timestamp or datetime.now(timezone.utc),
                 step.agent.name, step.agent.role, step.agent.model,
                 step.prompt_version, step.autonomy_level,
                 json.dumps(step.inputs), json.dumps(step.plan),
@@ -318,7 +318,10 @@ class AuditLogger:
                     model=row['agent_model']
                 )
                 
-                token_usage = TokenUsage(**row['token_usage'])
+                token_usage_data = row['token_usage']
+                if isinstance(token_usage_data, str):
+                    token_usage_data = json.loads(token_usage_data)
+                token_usage = TokenUsage(**token_usage_data)
                 
                 step = AgentStep(
                     version=row['version'],
@@ -368,7 +371,7 @@ class AuditLogger:
                 "version": step.version,
                 "case_id": step.case_id,
                 "step_id": step.step_id,
-                "timestamp": step.timestamp,
+                "timestamp": step.timestamp if isinstance(step.timestamp, str) else step.timestamp.isoformat(),
                 "agent": asdict(step.agent),
                 "prompt_version": step.prompt_version,
                 "autonomy_level": step.autonomy_level,

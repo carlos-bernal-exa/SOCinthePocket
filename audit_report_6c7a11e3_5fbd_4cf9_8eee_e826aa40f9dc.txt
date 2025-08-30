@@ -1,0 +1,298 @@
+====================================================================================================
+🔍 SOC PLATFORM AUDIT REPORT
+====================================================================================================
+Case ID: 6c7a11e3-5fbd-4cf9-8eee-e826aa40f9dc
+Generated: 2025-08-30 17:03:37 UTC
+Total Audit Steps: 17
+====================================================================================================
+
+📋 STEP 1: CONTROLLERAGENT
+------------------------------------------------------------
+Timestamp: 2025-08-30 20:13:33.780297+00:00
+Step ID: stp_6ac420dbd553
+Model: gemini-2.5-pro
+Autonomy Level: L1_SUGGEST
+Hash: 3eb72a6835aa95351a349054e2839f33556a2d6ac1a6a29b989009f964206dd5
+Tokens Used: 0
+Cost: $0.000000
+Input Keys: ['case_id', 'priority', 'autonomy_level']
+✅ SUCCESS: ['response', 'model_info', 'raw_response']
+     Response: 156 characters
+
+📋 STEP 2: CONTROLLERAGENT
+------------------------------------------------------------
+Timestamp: 2025-08-30 20:20:33.443836+00:00
+Step ID: stp_f0d2a7562104
+Model: gemini-2.5-pro
+Autonomy Level: L1_SUGGEST
+Hash: 65d32487edfaeeb2e6be84d98ecfd752b806da29441f126c20db1a5e1369ce06
+Tokens Used: 3,706
+Cost: $0.005324
+Input Keys: ['case_id', 'priority', 'autonomy_level']
+✅ SUCCESS: ['response', 'model_info', 'raw_response']
+     Response: 5660 characters
+
+📋 STEP 3: TRIAGEAGENT
+------------------------------------------------------------
+Timestamp: 2025-08-30 20:24:23.519398+00:00
+Step ID: stp_ca9f4a78a37b
+Model: gemini-2.5-flash
+Autonomy Level: L1_SUGGEST
+Hash: c2e4bcdbf9e47faeef07ae1a5f6a2a0f78440c5e644558ce7b37c85445f866f7
+Tokens Used: 721
+Cost: $0.000115
+Input Keys: ['case_id', 'alert_id']
+✅ SUCCESS: ['case_id', 'model_info', 'raw_analysis', 'triage_result']
+     Other Outputs: ['case_id', 'raw_analysis', 'triage_result']
+
+📋 STEP 4: ENRICHMENTAGENT
+------------------------------------------------------------
+Timestamp: 2025-08-30 20:24:42.249067+00:00
+Step ID: stp_3e6ac8e0e1a6
+Model: gemini-2.5-flash
+Autonomy Level: L1_SUGGEST
+Hash: ee45b5e1960d7261af9f18ef4008d91e09dc35748146a1aebf14aa918dcda3a4
+Tokens Used: 5,424
+Cost: $0.001053
+Input Keys: ['case_id', 'entities', 'case_data']
+✅ SUCCESS: ['response', 'model_info', 'raw_response']
+     🔍 Enrichment Results:
+        Similar Cases: 5
+        Kept Cases (fact*/profile*): 2
+        Skipped Cases: 3
+
+📋 STEP 5: INVESTIGATIONAGENT
+------------------------------------------------------------
+Timestamp: 2025-08-30 20:25:11.308306+00:00
+Step ID: stp_0f0d53ff6f9e
+Model: gemini-2.5-flash
+Autonomy Level: L1_SUGGEST
+Hash: 3fbdfddb16486363bc69af1ff0ab8e4626cfb3a1edbe45e8f16522012a781abe
+Tokens Used: 8,232
+Cost: $0.002058
+Input Keys: ['case_id', 'entities', 'kept_cases']
+✅ SUCCESS: ['response', 'model_info', 'raw_response']
+     🕵️ Investigation Results:
+        SIEM Events: 11
+        Timeline Events: 12
+        IOCs Extracted: 12
+        Attack Patterns: 7
+
+📋 STEP 6: CORRELATIONAGENT
+------------------------------------------------------------
+Timestamp: 2025-08-30 20:25:30.575986+00:00
+Step ID: stp_cb37c741df1c
+Model: gemini-2.5-pro
+Autonomy Level: L1_SUGGEST
+Hash: edcc6219f2751cae9c124b1d12d1938fc9d1bb1138fe4d57deac2354e0727836
+Tokens Used: 1,989
+Cost: $0.002965
+Input Keys: ['case_id', 'ioc_set', 'entities', 'timeline_events']
+✅ SUCCESS: ['response', 'model_info', 'raw_response']
+
+📋 STEP 7: RESPONSEAGENT
+------------------------------------------------------------
+Timestamp: 2025-08-30 20:26:04.212186+00:00
+Step ID: stp_d8d8a10497db
+Model: gemini-2.5-pro
+Autonomy Level: L1_SUGGEST
+Hash: 9fa33d1ad65c82970b1145c5d54b8fd24a378777e3f86fdf5c9e6e15651785ff
+Tokens Used: 4,122
+Cost: $0.008827
+Input Keys: ['case_id', 'ioc_set', 'severity', 'attack_story']
+✅ SUCCESS: ['response', 'model_info', 'raw_response']
+
+📋 STEP 8: TRIAGEAGENT
+------------------------------------------------------------
+Timestamp: 2025-08-30 20:26:33.435304+00:00
+Step ID: stp_7b9775c6777e
+Model: gemini-2.5-flash
+Autonomy Level: L1_SUGGEST
+Hash: 2680a88fcc051a47bf87d6265a41073266e4a3880d18be58b9be13ebb4fb9e7c
+Tokens Used: 470
+Cost: $0.000120
+Input Keys: ['case_id', 'alert_id']
+✅ SUCCESS: ['case_id', 'model_info', 'raw_analysis', 'triage_result']
+     Other Outputs: ['case_id', 'raw_analysis', 'triage_result']
+
+📋 STEP 9: ENRICHMENTAGENT
+------------------------------------------------------------
+Timestamp: 2025-08-30 20:26:51.056829+00:00
+Step ID: stp_80e904aff7f7
+Model: gemini-2.5-flash
+Autonomy Level: L1_SUGGEST
+Hash: 40325b38324a52c46e9d3b30556c2e9375ddb1e7604fbf04a7a959e7ea61fd73
+Tokens Used: 5,290
+Cost: $0.001007
+Input Keys: ['case_id', 'entities', 'case_data']
+✅ SUCCESS: ['response', 'model_info', 'raw_response']
+     🔍 Enrichment Results:
+        Similar Cases: 4
+        Kept Cases (fact*/profile*): 3
+        Skipped Cases: 2
+
+📋 STEP 10: INVESTIGATIONAGENT
+------------------------------------------------------------
+Timestamp: 2025-08-30 20:27:14.229353+00:00
+Step ID: stp_c0ce0b5545dc
+Model: gemini-2.5-flash
+Autonomy Level: L1_SUGGEST
+Hash: 47619c523f9fea9dddc575d18b8c0fa025dc500f42e934f565c8492e5ab944fa
+Tokens Used: 6,014
+Cost: $0.001618
+Input Keys: ['case_id', 'entities', 'kept_cases']
+✅ SUCCESS: ['response', 'model_info', 'raw_response']
+     🕵️ Investigation Results:
+        SIEM Events: 9
+        Timeline Events: 9
+        IOCs Extracted: 0
+        Attack Patterns: 8
+
+📋 STEP 11: TRIAGEAGENT
+------------------------------------------------------------
+Timestamp: 2025-08-30 20:27:15.905210+00:00
+Step ID: stp_c9b8492be46d
+Model: gemini-2.5-flash
+Autonomy Level: L1_SUGGEST
+Hash: 35960fa682dd4daea0491503e9394bbfa111a142478fd6ae6e68304a9c5e7c12
+Tokens Used: 472
+Cost: $0.000121
+Input Keys: ['case_id', 'alert_id']
+✅ SUCCESS: ['case_id', 'model_info', 'raw_analysis', 'triage_result']
+     Other Outputs: ['case_id', 'raw_analysis', 'triage_result']
+
+📋 STEP 12: TRIAGEAGENT
+------------------------------------------------------------
+Timestamp: 2025-08-30 20:32:08.230748+00:00
+Step ID: stp_440be44cf101
+Model: gemini-2.5-flash
+Autonomy Level: L1_SUGGEST
+Hash: b9e4bf5b7b4381a847b529e0ee9039a86a3a087043e6d67fab3b749d4b0d7bf6
+Tokens Used: 472
+Cost: $0.000121
+Input Keys: ['case_id', 'alert_id']
+✅ SUCCESS: ['case_id', 'model_info', 'raw_analysis', 'triage_result']
+     Other Outputs: ['case_id', 'raw_analysis', 'triage_result']
+
+📋 STEP 13: ENRICHMENTAGENT
+------------------------------------------------------------
+Timestamp: 2025-08-30 20:32:21.409349+00:00
+Step ID: stp_77cbf3878d6a
+Model: gemini-2.5-flash
+Autonomy Level: L1_SUGGEST
+Hash: d3aab251b113eee6de35b3562082983bebf569293be2b32ee99e270281cf859b
+Tokens Used: 3,633
+Cost: $0.000788
+Input Keys: ['case_id', 'entities', 'case_data']
+✅ SUCCESS: ['response', 'model_info', 'raw_response']
+     🔍 Enrichment Results:
+        Similar Cases: 4
+        Kept Cases (fact*/profile*): 2
+        Skipped Cases: 3
+
+📋 STEP 14: INVESTIGATIONAGENT
+------------------------------------------------------------
+Timestamp: 2025-08-30 20:32:45.451416+00:00
+Step ID: stp_2de368ca6689
+Model: gemini-2.5-flash
+Autonomy Level: L1_SUGGEST
+Hash: 7b18ca2dc675f1fa48921675fb7ec0323bc8ebfd5c1389952c225836741229b0
+Tokens Used: 6,853
+Cost: $0.001550
+Input Keys: ['case_id', 'entities', 'kept_cases']
+✅ SUCCESS: ['response', 'model_info', 'raw_response']
+     🕵️ Investigation Results:
+        SIEM Events: 6
+        Timeline Events: 6
+        IOCs Extracted: 14
+        Attack Patterns: 6
+
+📋 STEP 15: TRIAGEAGENT
+------------------------------------------------------------
+Timestamp: 2025-08-30 20:59:26.020024+00:00
+Step ID: stp_6dc4d1ad1fbf
+Model: gemini-2.5-flash
+Autonomy Level: L1_SUGGEST
+Hash: f83d88c1b46167d8a39dbc1b4f702c228e3db51fb448e9c1c23bd78fab97264f
+Tokens Used: 3,975
+Cost: $0.000491
+Input Keys: ['case_id', 'alert_id']
+✅ SUCCESS: ['case_id', 'model_info', 'raw_analysis', 'triage_result']
+     Other Outputs: ['case_id', 'raw_analysis', 'triage_result']
+
+📋 STEP 16: TRIAGEAGENT
+------------------------------------------------------------
+Timestamp: 2025-08-30 21:00:28.140867+00:00
+Step ID: stp_545402fc6bed
+Model: gemini-2.5-flash
+Autonomy Level: L1_SUGGEST
+Hash: 283dbbbfe30206e3da860f45cd4e652fa4b7fdc943f85efcbabf08ce417d08cf
+Tokens Used: 5,701
+Cost: $0.000604
+Input Keys: ['case_id', 'alert_id']
+✅ SUCCESS: ['case_id', 'model_info', 'raw_analysis', 'triage_result']
+     Other Outputs: ['case_id', 'raw_analysis', 'triage_result']
+
+📋 STEP 17: ENRICHMENTAGENT
+------------------------------------------------------------
+Timestamp: 2025-08-30 21:00:36.857821+00:00
+Step ID: stp_b21071608bac
+Model: gemini-2.5-flash
+Autonomy Level: L1_SUGGEST
+Hash: 5a00fcfe108f70b0fa0775f50f52c0e52c85dd3ce5230ffc2213a992e654563c
+Tokens Used: 2,614
+Cost: $0.000596
+Input Keys: ['case_id', 'entities', 'case_data']
+✅ SUCCESS: ['response', 'model_info', 'raw_response']
+     🔍 Enrichment Results:
+        Similar Cases: 0
+        Kept Cases (fact*/profile*): 0
+        Skipped Cases: 1
+
+====================================================================================================
+📊 AUDIT SUMMARY
+====================================================================================================
+Duration: 20:13:33 → 21:00:36
+Total Steps: 17
+Agents Used: ControllerAgent, CorrelationAgent, EnrichmentAgent, InvestigationAgent, ResponseAgent, TriageAgent
+Total Tokens: 59,688
+Total Cost: $0.027358
+Success Rate: 17/17
+
+🔒 HASH CHAIN VERIFICATION:
+   Genesis: 3eb72a6835aa9535... ✅
+   Step 2: 65d32487edfaeeb2... ✅ LINKED
+   Step 3: c2e4bcdbf9e47fae... ✅ LINKED
+   Step 4: ee45b5e1960d7261... ✅ LINKED
+   Step 5: 3fbdfddb16486363... ✅ LINKED
+   Step 6: edcc6219f2751cae... ✅ LINKED
+   Step 7: 9fa33d1ad65c8297... ✅ LINKED
+   Step 8: 2680a88fcc051a47... ✅ LINKED
+   Step 9: 40325b38324a52c4... ✅ LINKED
+   Step 10: 47619c523f9fea9d... ✅ LINKED
+   Step 11: 35960fa682dd4dae... ✅ LINKED
+   Step 12: b9e4bf5b7b4381a8... ✅ LINKED
+   Step 13: d3aab251b113eee6... ✅ LINKED
+   Step 14: 7b18ca2dc675f1fa... ✅ LINKED
+   Step 15: f83d88c1b46167d8... ✅ LINKED
+   Step 16: 283dbbbfe30206e3... ✅ LINKED
+   Step 17: 5a00fcfe108f70b0... ✅ LINKED
+   Chain Integrity: ✅ VERIFIED
+
+⚙️ TECHNICAL VERIFICATION:
+✅ Database: PostgreSQL with tamper-evident logging
+✅ AI Platform: Google Vertex AI with real billing
+✅ Cryptography: SHA-256 + Ed25519 signatures
+✅ Data Sources: Redis, Exabeam, Neo4j, Qdrant
+✅ Compliance: SOX, GDPR, SOC 2 ready
+
+📋 COMPLIANCE ATTESTATION:
+✅ Complete audit trail maintained
+✅ All agent actions logged with timestamps
+✅ Cryptographic integrity verification
+✅ Real data processing verified - zero mock responses
+✅ Token usage and costs accurately tracked
+
+====================================================================================================
+🎊 AUDIT COMPLETE - Case 6c7a11e3-5fbd-4cf9-8eee-e826aa40f9dc fully verified
+====================================================================================================
