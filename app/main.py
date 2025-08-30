@@ -14,6 +14,7 @@ from app.agents.correlation import CorrelationAgent
 from app.agents.response import ResponseAgent
 from app.agents.reporting import ReportingAgent
 from app.agents.knowledge import KnowledgeAgent
+from app.services.reports import report_generator
 
 logger = logging.getLogger(__name__)
 
@@ -186,6 +187,15 @@ async def enrich_case(case_id: str, request: CaseEnrichmentRequest):
         total_tokens = sum(step.get("token_usage", {}).get("total_tokens", 0) for step in enrichment_context["steps"])
         total_cost = sum(step.get("token_usage", {}).get("cost_usd", 0.0) for step in enrichment_context["steps"])
         
+        # Generate reports automatically
+        logger.info(f"Generating reports for case {case_id}")
+        try:
+            report_paths = await report_generator.generate_all_reports(case_id)
+            logger.info(f"Reports generated successfully: {report_paths}")
+        except Exception as e:
+            logger.error(f"Failed to generate reports for case {case_id}: {e}")
+            report_paths = {}
+        
         return {
             "case_id": case_id,
             "status": "completed",
@@ -206,7 +216,8 @@ async def enrich_case(case_id: str, request: CaseEnrichmentRequest):
             "investigation_summary": investigation_output.get("investigation_summary", {}),
             "attack_story": correlation_output.get("attack_story", {}),
             "containment_actions": response_output.get("containment_actions", []),
-            "ioc_set": investigation_output.get("ioc_set", {})
+            "ioc_set": investigation_output.get("ioc_set", {}),
+            "reports": report_paths
         }
         
     except Exception as e:
