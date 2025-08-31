@@ -118,15 +118,16 @@ Based on this case data, please provide a structured JSON response with:
                 "summary": text_response[:200] + "..." if len(text_response) > 200 else text_response
             }
         
-        # Store entities in Neo4j
+        # Store entities in Neo4j (temporarily disabled for debugging)
         case_id = inputs.get("case_id")
         if case_id and structured_output.get("entities"):
-            for entity in structured_output["entities"]:
-                if isinstance(entity, dict):
-                    entity_type = entity.get("type", "unknown")
-                    entity_value = entity.get("value", "")
-                    if entity_value:
-                        await neo4j_store.create_observed_entity(case_id, entity_type, entity_value)
+            print(f"Would store {len(structured_output['entities'])} entities in Neo4j (disabled for debugging)")
+            # for entity in structured_output["entities"]:
+            #     if isinstance(entity, dict):
+            #         entity_type = entity.get("type", "unknown")
+            #         entity_value = entity.get("value", "")
+            #         if entity_value:
+            #             await neo4j_store.create_observed_entity(case_id, entity_type, entity_value)
         
         return {
             "case_id": inputs.get("case_id"),
