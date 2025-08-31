@@ -26,6 +26,9 @@ class ReportingAgent(AgentBase):
     def _format_prompt(self, prompt_content: str, inputs: Dict[str, Any]) -> str:
         """Format reporting-specific prompt"""
         case_id = inputs.get("case_id", "unknown")
+        triage_analysis = inputs.get("triage_analysis", {})
+        enrichment_results = inputs.get("enrichment_results", {})
+        entities = inputs.get("entities", [])
         attack_story = inputs.get("attack_story", {})
         containment_actions = inputs.get("containment_actions", [])
         ioc_set = inputs.get("ioc_set", {})
@@ -38,10 +41,18 @@ Your role is to:
 3. Create actionable timelines and IOC lists
 4. Include specific recommendations aligned to incident response standards
 
-Case Analysis Results:
+Primary Case Analysis Results:
+Triage Analysis: {json.dumps(triage_analysis, indent=2)}
+Enrichment Results: {json.dumps(enrichment_results, indent=2)}
+Entities Identified: {json.dumps(entities, indent=2)}
+
+Advanced Analysis (if available):
 Attack Story: {json.dumps(attack_story, indent=2)}
 Containment Actions: {json.dumps(containment_actions, indent=2)}
 IOCs: {json.dumps(ioc_set, indent=2)}
+
+IMPORTANT: Base your report on the ACTUAL data provided above. Do not create synthetic content. 
+If advanced analysis data is empty, focus on the triage analysis, enrichment results, and entities identified.
 
 Report Requirements:
 - Professional formatting suitable for incident response documentation

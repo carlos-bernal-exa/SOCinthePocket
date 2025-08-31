@@ -86,6 +86,10 @@ async def enrich_case(case_id: str, request: CaseEnrichmentRequest):
         triage_outputs = triage_result.get("outputs", {})
         logger.info(f"Triage outputs type: {type(triage_outputs)}, keys: {list(triage_outputs.keys()) if isinstance(triage_outputs, dict) else 'not dict'}")
         
+        # Initialize defaults
+        triage_analysis = {}
+        entities = []
+        
         if isinstance(triage_outputs, dict):
             triage_analysis = triage_outputs.get("triage_result", {})
             if isinstance(triage_analysis, dict):
@@ -98,6 +102,7 @@ async def enrich_case(case_id: str, request: CaseEnrichmentRequest):
             logger.warning(f"Triage outputs not dict, checking direct access...")
             # Try alternative access pattern
             entities = triage_result.get("triage_result", {}).get("entities", [])
+            triage_analysis = triage_result.get("triage_result", {})
             logger.info(f"Alternative access found {len(entities)} entities")
             
         enrichment_context["entities"] = entities
@@ -183,6 +188,9 @@ async def enrich_case(case_id: str, request: CaseEnrichmentRequest):
             reporting_agent = agents["reporting"]
             reporting_inputs = {
                 "case_id": case_id,
+                "triage_analysis": triage_analysis,
+                "enrichment_results": enrichment_outputs,
+                "entities": entities,
                 "attack_story": correlation_output.get("attack_story", {}),
                 "containment_actions": response_output.get("containment_actions", []),
                 "remediation_steps": response_output.get("remediation_steps", []),
@@ -232,12 +240,12 @@ async def enrich_case(case_id: str, request: CaseEnrichmentRequest):
             "audit_trail": audit_trail,
             "steps": len(enrichment_context["steps"]),
             "pipeline_results": pipeline_results,
-            "final_report": report_output.get("incident_report", triage_output.get("summary", "Case analysis completed")),
+            "final_report": report_output.get("incident_report", triage_analysis.get("summary", "Case analysis completed")),
             "triage_assessment": {
-                "severity": triage_output.get("severity", "medium"),
-                "priority": triage_output.get("priority", 3),
-                "escalation_needed": triage_output.get("escalation_needed", False),
-                "initial_steps": triage_output.get("initial_steps", [])
+                "severity": triage_analysis.get("severity", "medium"),
+                "priority": triage_analysis.get("priority", 3),
+                "escalation_needed": triage_analysis.get("escalation_needed", False),
+                "initial_steps": triage_analysis.get("initial_steps", [])
             },
             "investigation_summary": investigation_output.get("investigation_summary", {}),
             "attack_story": correlation_output.get("attack_story", {}),
