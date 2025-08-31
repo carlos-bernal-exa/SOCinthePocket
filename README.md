@@ -71,6 +71,83 @@ docker-compose up -d
 uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
+## 🎚️ Autonomy Levels
+
+The platform supports different levels of AI autonomy to match your organization's risk tolerance and operational requirements:
+
+### `manual` - Human-in-the-Loop
+- **Description**: AI provides recommendations, human approves each step
+- **Use Case**: High-stakes investigations, regulatory environments, training scenarios
+- **Behavior**: 
+  - AI agents generate analysis and recommendations
+  - Human operator must explicitly approve each agent's execution
+  - Platform pauses between each agent for manual review
+  - Full audit trail of human decisions recorded
+- **Example**: Critical incidents involving customer data or regulatory violations
+
+### `supervised` - Semi-Autonomous (Default)
+- **Description**: AI executes standard workflows, human oversight for critical decisions
+- **Use Case**: Most production SOC environments, balanced automation with control
+- **Behavior**:
+  - AI agents execute automatically for routine analysis steps
+  - Human approval required for actions affecting production systems
+  - Platform provides real-time status and allows intervention
+  - Critical findings flagged for immediate human review
+- **Example**: Standard incident response, threat hunting, routine investigations
+
+### `autonomous` - Fully Autonomous
+- **Description**: AI operates independently with minimal human intervention
+- **Use Case**: High-volume environments, mature SOC teams, non-critical systems
+- **Behavior**:
+  - AI agents execute complete investigation workflows automatically
+  - Human notified of results and critical findings
+  - Platform can take automated response actions within defined parameters
+  - Complete execution with post-analysis human review
+- **Example**: Automated threat detection, bulk case analysis, sandbox environments
+
+### `research` - Deep Analysis Mode
+- **Description**: Maximum AI capability for complex investigations
+- **Use Case**: Advanced persistent threats, complex forensic analysis, unknown threats
+- **Behavior**:
+  - AI agents use advanced reasoning and extended context
+  - Multiple analysis rounds with cross-agent collaboration
+  - Comprehensive SIEM queries and external intelligence gathering
+  - Extended execution time for thorough investigation
+- **Example**: APT investigations, zero-day analysis, sophisticated attack campaigns
+
+### Setting Autonomy Level
+
+```bash
+# Manual mode - requires human approval for each step
+curl -X POST "http://localhost:8000/cases/{case_id}/enrich" \
+  -H "Content-Type: application/json" \
+  -d '{"autonomy_level": "manual", "max_depth": 2}'
+
+# Supervised mode - balanced automation (default)
+curl -X POST "http://localhost:8000/cases/{case_id}/enrich" \
+  -H "Content-Type: application/json" \
+  -d '{"autonomy_level": "supervised", "max_depth": 2}'
+
+# Autonomous mode - full automation
+curl -X POST "http://localhost:8000/cases/{case_id}/enrich" \
+  -H "Content-Type: application/json" \
+  -d '{"autonomy_level": "autonomous", "max_depth": 3}'
+
+# Research mode - deep analysis
+curl -X POST "http://localhost:8000/cases/{case_id}/enrich" \
+  -H "Content-Type: application/json" \
+  -d '{"autonomy_level": "research", "max_depth": 4}'
+```
+
+### Autonomy Level Considerations
+
+| Level | Speed | Accuracy | Cost | Human Effort | Risk |
+|-------|-------|----------|------|--------------|------|
+| Manual | Slow | High | Low | High | Low |
+| Supervised | Medium | High | Medium | Medium | Low |
+| Autonomous | Fast | Medium | Medium | Low | Medium |
+| Research | Slow | Very High | High | Low | Low |
+
 ## 📡 API Endpoints
 
 ### Core Investigation
@@ -144,10 +221,20 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 ### Test with Real Cases
 ```bash
-# Run investigation with real case data
+# Run investigation with real case data (supervised mode)
 curl -X POST "http://localhost:8000/cases/6c7a11e3-5fbd-4cf9-8eee-e826aa40f9dc/enrich" \
   -H "Content-Type: application/json" \
   -d '{"autonomy_level": "supervised", "max_depth": 2}'
+
+# For training or high-stakes scenarios, use manual mode
+curl -X POST "http://localhost:8000/cases/6c7a11e3-5fbd-4cf9-8eee-e826aa40f9dc/enrich" \
+  -H "Content-Type: application/json" \
+  -d '{"autonomy_level": "manual", "max_depth": 2}'
+
+# For complex threat analysis, use research mode
+curl -X POST "http://localhost:8000/cases/6c7a11e3-5fbd-4cf9-8eee-e826aa40f9dc/enrich" \
+  -H "Content-Type: application/json" \
+  -d '{"autonomy_level": "research", "max_depth": 4}'
 ```
 
 ### View Generated Reports
