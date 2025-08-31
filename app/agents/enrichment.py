@@ -194,27 +194,25 @@ Format your response as structured JSON with fields:
             entities = inputs.get("entities", [])
             case_data = inputs.get("case_data", {})
             
-            # Create case-rule relationship in Neo4j
+            # Create case-rule relationship in Neo4j (temporarily disabled for debugging)
             rule_id = case_data.get("rule_id", f"rule_{case_id}")
-            await neo4j_store.create_case_rule_relationship(case_id, rule_id)
+            print(f"Would create case-rule relationship for {case_id} (disabled for debugging)")
             
             # Find similar cases in Redis
             similar_cases = await self._find_similar_cases(entities, case_data)
             
-            # Create related cases in Neo4j
+            # Create related cases in Neo4j (temporarily disabled for debugging)
             if similar_cases:
-                related_cases_data = []
-                for case in similar_cases:
-                    related_cases_data.append({
-                        "id": case["case_id"],
-                        "score": case["similarity_score"]
-                    })
-                await neo4j_store.create_related_cases(case_id, related_cases_data)
+                print(f"Would create {len(similar_cases)} related cases in Neo4j (disabled for debugging)")
             
-            # Extract case IDs for Exabeam lookup
-            case_ids = [case["case_id"] for case in similar_cases]
+            # Extract case IDs for Exabeam lookup - include the current case AND similar cases
+            case_ids = [case_id]  # Start with the current case
+            case_ids.extend([case["case_id"] for case in similar_cases])  # Add similar cases
             
-            # Fetch raw data from Exabeam
+            # Remove duplicates while preserving order
+            case_ids = list(dict.fromkeys(case_ids))
+            
+            # Fetch raw data from Exabeam for ALL cases (current + similar)
             raw_cases = await self._fetch_exabeam_raw_data(case_ids)
             
             # Apply rule filtering
@@ -223,12 +221,12 @@ Format your response as structured JSON with fields:
             # Enrich entities with context
             enriched_entities = await self._enrich_entities(entities, similar_cases)
             
-            # Store observed entities in Neo4j
+            # Store observed entities in Neo4j (temporarily disabled for debugging)
             for entity in enriched_entities:
                 entity_type = entity.get("type", "unknown")
                 entity_value = entity.get("value", "")
                 if entity_value:
-                    await neo4j_store.create_observed_entity(case_id, entity_type, entity_value)
+                    print(f"Would store entity {entity_type}:{entity_value} in Neo4j (disabled for debugging)")
             
             return {
                 "related_items": similar_cases,

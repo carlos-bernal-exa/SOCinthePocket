@@ -151,6 +151,11 @@ class RedisStore:
                     if investigation_data:
                         return self._deserialize_investigation_case(json.loads(investigation_data))
                 
+                # Try case_id: pattern - another real data format
+                case_id_data = await self.client.get(f"case_id:{case_or_alert_id}")
+                if case_id_data:
+                    return self._deserialize_case_id_format(json.loads(case_id_data), case_or_alert_id)
+                
             except Exception as e:
                 logger.error(f"Error retrieving case summary: {e}")
         
@@ -240,6 +245,37 @@ class RedisStore:
         except Exception as e:
             logger.error(f"Failed to deserialize investigation data: {e}")
             return {}
+
+    def _deserialize_case_id_format(self, raw_data: Dict, case_id: str) -> Dict[str, Any]:
+        """
+        Deserialize case_id: format data from Redis
+        This handles cases with case_summary and detections
+        """
+        case_summary = raw_data.get("case_summary", {})
+        entities_data = raw_data.get("entities", {})
+        detections = raw_data.get("detections", [])
+        
+        return {
+            "case_id": case_id,
+            "alert_id": case_id, 
+            "title": case_summary.get("title", "Security Case"),
+            "description": case_summary.get("summary", "Security investigation case"),
+            "severity": case_summary.get("threat_classification", "MEDIUM").upper(),
+            "status": "ACTIVE",
+            "created_at": raw_data.get("date_added", "2025-08-30T17:00:00Z"),
+            "entities": {
+                "ips": entities_data.get("ips", []) if isinstance(entities_data.get("ips"), list) 
+                      else [entities_data.get("ips")] if entities_data.get("ips") else [],
+                "usernames": entities_data.get("usernames", []) if isinstance(entities_data.get("usernames"), list)
+                           else [entities_data.get("usernames")] if entities_data.get("usernames") else [],
+                "emails": [entities_data.get("email")] if entities_data.get("email") else [],
+                "roles": [entities_data.get("roles")] if entities_data.get("roles") else []
+            },
+            "raw_data": raw_data,
+            "detections": detections,
+            "next_steps": raw_data.get("next_steps", []),
+            "threat_classification": case_summary.get("threat_classification", "Undetermined")
+        }
     
     def _get_mock_case_summary(self, case_id: str) -> Dict[str, Any]:
         """Generate mock case summary for testing"""

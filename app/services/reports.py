@@ -20,6 +20,7 @@ class ReportGenerator:
         self.audit_dir = os.path.join(reports_dir, "audit")
         self.investigation_dir = os.path.join(reports_dir, "investigation")
         self.json_dir = os.path.join(reports_dir, "json")
+        self.db_url = os.getenv("POSTGRES_URL", "postgresql://soc_user:soc_password@postgres:5432/soc_platform")
         
         # Ensure directories exist
         for directory in [self.audit_dir, self.investigation_dir, self.json_dir]:
@@ -64,7 +65,7 @@ class ReportGenerator:
         """Generate markdown audit report"""
         try:
             # Connect to audit database
-            conn = await asyncpg.connect('postgresql://soc_user:soc_password@localhost:5432/soc_platform')
+            conn = await asyncpg.connect(self.db_url)
             
             # Get audit data
             audit_data = await conn.fetch('''
@@ -102,7 +103,7 @@ class ReportGenerator:
         """Generate JSON audit report"""
         try:
             # Connect to audit database
-            conn = await asyncpg.connect('postgresql://soc_user:soc_password@localhost:5432/soc_platform')
+            conn = await asyncpg.connect(self.db_url)
             
             # Get audit data
             audit_data = await conn.fetch('''
@@ -247,14 +248,32 @@ class ReportGenerator:
                         lines.append(f"- **Status:** ✅ SUCCESS")
                         
                         # Parse structured responses
+                        response = None
                         if 'response' in outputs:
                             response = outputs['response']
-                            if isinstance(response, str) and response.startswith('```json'):
-                                try:
-                                    json_start = response.find('{')
-                                    json_end = response.rfind('}') + 1
-                                    json_content = response[json_start:json_end]
-                                    response_data = json.loads(json_content)
+                        elif 'triage_result' in outputs:
+                            response = outputs['triage_result']
+                        elif 'raw_analysis' in outputs:
+                            response = outputs['raw_analysis']
+                        
+                        if response is not None:
+                            # Try to parse as JSON (either direct dict or JSON string)
+                            response_data = None
+                            try:
+                                if isinstance(response, dict):
+                                    response_data = response
+                                elif isinstance(response, str):
+                                    if response.startswith('```json'):
+                                        # Extract JSON from markdown code block
+                                        json_start = response.find('{')
+                                        json_end = response.rfind('}') + 1
+                                        json_content = response[json_start:json_end]
+                                        response_data = json.loads(json_content)
+                                    else:
+                                        # Try parsing as direct JSON string
+                                        response_data = json.loads(response)
+                                
+                                if response_data:
                                     
                                     # Agent-specific results
                                     if step['agent_name'] == 'TriageAgent':
@@ -277,11 +296,21 @@ class ReportGenerator:
                                         lines.append(f"  - **SIEM Events:** {len(siem_events)}")
                                         lines.append(f"  - **Timeline Events:** {len(timeline)}")
                                         lines.append(f"  - **IOCs:** {total_iocs} extracted")
+                                else:
+                                    # Generic JSON response - show the actual content
+                                    response_str = json.dumps(response_data, indent=2)
+                                    if len(response_str) > 200:
+                                        lines.append(f"  - **Response:** {response_str[:200]}... ({len(response_str)} chars)")
+                                    else:
+                                        lines.append(f"  - **Response:** {response_str}")
                                         
-                                except:
-                                    lines.append(f"  - **Response:** {len(response)} characters")
-                            else:
-                                lines.append(f"  - **Response:** {len(str(response))} characters")
+                            except Exception as e:
+                                # Failed to parse JSON - show raw content
+                                response_str = str(response)
+                                if len(response_str) > 200:
+                                    lines.append(f"  - **Response:** {response_str[:200]}... ({len(response_str)} chars)")
+                                else:
+                                    lines.append(f"  - **Response:** {response_str}")
                                 
                 except:
                     lines.append(f"- **Status:** ⚠️ Could not parse outputs")

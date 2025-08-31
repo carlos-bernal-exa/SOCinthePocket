@@ -8,6 +8,7 @@ services:
     environment:
       - PYTHONPATH=/app
       - GOOGLE_APPLICATION_CREDENTIALS=/app/threatexplainer-1185aa9fcd44.json
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
       - REDIS_URL=redis://host.docker.internal:6379
       - POSTGRES_URL=postgresql://soc_user:soc_password@postgres:5432/soc_platform
       - NEO4J_URL=bolt://neo4j:7687

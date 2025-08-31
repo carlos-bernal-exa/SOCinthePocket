@@ -74,17 +74,34 @@ async def enrich_case(case_id: str, request: CaseEnrichmentRequest):
         triage_agent = agents["triage"]
         triage_inputs = {
             "case_id": case_id,
-            "case_data": request.dict(),
+            "case_data": {},  # Let TriageAgent fetch real data from Redis
             "autonomy_level": request.autonomy_level
         }
         triage_result = await triage_agent.execute(case_id, triage_inputs, request.autonomy_level)
         pipeline_results["triage"] = triage_result
         enrichment_context["steps"].append(triage_result)
         
-        # Extract entities from triage
-        triage_output = triage_result.get("triage_result", {})
-        entities = triage_output.get("entities", [])
+        # Extract entities from triage - detailed debugging
+        logger.info(f"Triage result keys: {list(triage_result.keys())}")
+        triage_outputs = triage_result.get("outputs", {})
+        logger.info(f"Triage outputs type: {type(triage_outputs)}, keys: {list(triage_outputs.keys()) if isinstance(triage_outputs, dict) else 'not dict'}")
+        
+        if isinstance(triage_outputs, dict):
+            triage_analysis = triage_outputs.get("triage_result", {})
+            if isinstance(triage_analysis, dict):
+                entities = triage_analysis.get("entities", [])
+                logger.info(f"Found {len(entities)} entities in triage_result")
+            else:
+                logger.warning(f"triage_result is not dict: {type(triage_analysis)}")
+                entities = []
+        else:
+            logger.warning(f"Triage outputs not dict, checking direct access...")
+            # Try alternative access pattern
+            entities = triage_result.get("triage_result", {}).get("entities", [])
+            logger.info(f"Alternative access found {len(entities)} entities")
+            
         enrichment_context["entities"] = entities
+        logger.info(f"Final: Extracted {len(entities)} entities from triage for enrichment")
         
         # Step 2: Enrichment Agent
         logger.info(f"Step 2: Enrichment analysis for case {case_id}")
@@ -92,16 +109,25 @@ async def enrich_case(case_id: str, request: CaseEnrichmentRequest):
         enrichment_inputs = {
             "case_id": case_id,
             "entities": entities,
-            "case_data": request.dict()
+            "case_data": {}  # Let EnrichmentAgent fetch real data if needed
         }
         enrichment_result = await enrichment_agent.execute(case_id, enrichment_inputs, request.autonomy_level)
         pipeline_results["enrichment"] = enrichment_result
         enrichment_context["steps"].append(enrichment_result)
         
-        # Extract kept cases for investigation
-        enrichment_output = enrichment_result.get("enrichment_result", {})
-        kept_cases = enrichment_output.get("kept_cases", [])
-        enrichment_context["related_cases"] = enrichment_output.get("related_items", [])
+        # Extract kept cases for investigation  
+        enrichment_outputs = enrichment_result.get("outputs", {})
+        logger.info(f"Enrichment outputs structure: {type(enrichment_outputs)} - {str(enrichment_outputs)[:200]}")
+        
+        if isinstance(enrichment_outputs, dict):
+            kept_cases = enrichment_outputs.get("kept_cases", [])
+            enrichment_context["related_cases"] = enrichment_outputs.get("related_items", [])
+        else:
+            logger.warning(f"Enrichment outputs is not dict: {type(enrichment_outputs)}")
+            kept_cases = []
+            enrichment_context["related_cases"] = []
+            
+        logger.info(f"Enrichment found {len(enrichment_context['related_cases'])} related cases, {len(kept_cases)} kept for SIEM")
         
         # Step 3: Investigation Agent (only if we have eligible cases)
         investigation_output = {}

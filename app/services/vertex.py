@@ -1,6 +1,6 @@
 """
-Vertex AI Gemini wrapper with token tracking and cost calculation
-Real implementation with Google Cloud Vertex AI
+Google Generative AI wrapper with token tracking and cost calculation
+Real implementation with google-generativeai library
 """
 import os
 import json
@@ -9,37 +9,37 @@ from typing import Dict, Any, Tuple, Optional
 import logging
 
 try:
-    import vertexai
-    from vertexai.generative_models import GenerativeModel
-    VERTEXAI_AVAILABLE = True
+    import google.generativeai as genai
+    GENAI_AVAILABLE = True
 except ImportError:
-    VERTEXAI_AVAILABLE = False
+    GENAI_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 
-# Model pricing per million tokens (USD) - matches 05_Vertex_and_Tokens.md
+# Model pricing per million tokens (USD) - Based on Google AI pricing
 MODEL_PRICING = {
-    "gemini-2.5-pro": {"input": 3.50, "output": 3.50},  # $3.50 / 1M tokens
-    "gemini-2.5-flash": {"input": 0.35, "output": 0.35},  # $0.35 / 1M
-    "gemini-2.5-flash-lite": {"input": 0.05, "output": 0.05}  # $0.05 / 1M
+    "gemini-2.5-pro": {"input": 3.50, "output": 14.00},  # $3.50 input / $14.00 output per 1M tokens
+    "gemini-2.5-flash": {"input": 0.35, "output": 1.40},  # $0.35 input / $1.40 output per 1M tokens  
+    "gemini-2.5-flash-lite": {"input": 0.10, "output": 0.40}  # $0.10 input / $0.40 output per 1M tokens
 }
 
 class VertexAIService:
     def __init__(self):
-        self.project_id = os.getenv("GOOGLE_CLOUD_PROJECT", "threatexplainer")
-        self.location = os.getenv("GOOGLE_CLOUD_REGION", "us-central1")
+        self.api_key = os.getenv("GOOGLE_API_KEY")
         self.initialized = False
         
-        if VERTEXAI_AVAILABLE:
+        if GENAI_AVAILABLE and self.api_key:
             try:
-                vertexai.init(project=self.project_id, location=self.location)
+                genai.configure(api_key=self.api_key)
                 self.initialized = True
-                logger.info(f"VertexAI Service initialized - Project: {self.project_id}, Region: {self.location}")
+                logger.info("Google Generative AI initialized successfully")
             except Exception as e:
-                logger.error(f"Failed to initialize Vertex AI: {e}")
+                logger.error(f"Failed to initialize Google Generative AI: {e}")
                 logger.info("Falling back to mock mode")
+        elif not self.api_key:
+            logger.warning("GOOGLE_API_KEY not found, using mock mode")
         else:
-            logger.warning("Vertex AI package not available, using mock mode")
+            logger.warning("google-generativeai package not available, using mock mode")
     
     def _calculate_cost(self, model: str, input_tokens: int, output_tokens: int) -> float:
         """Calculate cost in USD based on token usage and model pricing"""
@@ -127,12 +127,27 @@ class VertexAIService:
         """
         Real Gemini model execution via Vertex AI
         """
+        # Always try real API first if available - no mock fallback
+        if not (self.initialized and GENAI_AVAILABLE):
+            error_msg = "Google Generative AI not initialized or not available"
+            logger.error(error_msg)
+            error_response = {
+                "text": f"Configuration Error: {error_msg}",
+                "model": model,
+                "finish_reason": "error",
+                "real_mode": False,
+                "error": error_msg
+            }
+            zero_usage = {
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "total_tokens": 0,
+                "cost_usd": 0.0
+            }
+            return error_response, zero_usage
+        
         try:
-            if self.initialized and VERTEXAI_AVAILABLE:
-                return await self._run_real_gemini(model, prompt, system_instruction, temperature, max_output_tokens)
-            else:
-                logger.warning(f"Vertex AI not available, using mock for {model}")
-                return await self._run_mock_gemini(model, prompt, agent_name)
+            return await self._run_real_gemini(model, prompt, system_instruction, temperature, max_output_tokens)
                 
         except Exception as e:
             logger.error(f"Error in Gemini {model}: {e}")
@@ -159,42 +174,54 @@ class VertexAIService:
         temperature: float = 0.1,
         max_output_tokens: int = 8192
     ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-        """Execute real Gemini API call"""
+        """Execute real Gemini API call using google-generativeai"""
         try:
+            # Map model names to actual Gemini 2.5 model names
+            model_mapping = {
+                "gemini-2.5-pro": "gemini-2.5-pro",  # Gemini 2.5 Pro
+                "gemini-2.5-flash": "gemini-2.5-flash",  # Gemini 2.5 Flash
+                "gemini-2.5-flash-lite": "gemini-2.5-flash-lite"  # Gemini 2.5 Flash-Lite
+            }
+            actual_model = model_mapping.get(model, "gemini-2.5-flash")
+            
             # Initialize the model
-            gemini_model = GenerativeModel(model_name=model, system_instruction=system_instruction)
+            gemini_model = genai.GenerativeModel(actual_model)
+            
+            # Prepare the full prompt
+            if system_instruction:
+                full_prompt = f"System: {system_instruction}\n\nUser: {prompt}"
+            else:
+                full_prompt = prompt
             
             # Configure generation parameters
-            generation_config = {
-                "temperature": temperature,
-                "max_output_tokens": max_output_tokens,
-            }
+            generation_config = genai.types.GenerationConfig(
+                temperature=temperature,
+                max_output_tokens=max_output_tokens,
+            )
             
-            # Make the API call
+            # Make the API call without timeout to ensure real responses
             response = await asyncio.to_thread(
                 gemini_model.generate_content,
-                prompt,
+                full_prompt,
                 generation_config=generation_config
             )
             
             # Extract response text
-            response_text = response.text if hasattr(response, 'text') else str(response)
+            response_text = response.text if response.text else str(response)
             
             # Extract token usage if available
-            if hasattr(response, 'usage_metadata'):
+            if hasattr(response, 'usage_metadata') and response.usage_metadata:
                 usage = response.usage_metadata
-                input_tokens = getattr(usage, 'prompt_token_count', 0)
-                output_tokens = getattr(usage, 'candidates_token_count', 0)
-                total_tokens = getattr(usage, 'total_token_count', input_tokens + output_tokens)
+                input_tokens = usage.prompt_token_count if hasattr(usage, 'prompt_token_count') else 0
+                output_tokens = usage.candidates_token_count if hasattr(usage, 'candidates_token_count') else 0
+                total_tokens = usage.total_token_count if hasattr(usage, 'total_token_count') else input_tokens + output_tokens
             else:
                 # Fallback estimation
-                input_tokens = len(prompt.split()) * 1.3
-                output_tokens = len(response_text.split()) * 1.3
-                total_tokens = int(input_tokens + output_tokens)
-                input_tokens = int(input_tokens)
-                output_tokens = int(output_tokens)
+                input_tokens = int(len(full_prompt.split()) * 1.3)
+                output_tokens = int(len(response_text.split()) * 1.3)
+                total_tokens = input_tokens + output_tokens
             
-            # Calculate cost
+            # Calculate cost using original model for pricing
             cost_usd = self._calculate_cost(model, input_tokens, output_tokens)
             
             # Prepare response
@@ -202,7 +229,8 @@ class VertexAIService:
                 "text": response_text,
                 "model": model,
                 "finish_reason": "stop",
-                "real_mode": True
+                "real_mode": True,
+                "actual_model": actual_model
             }
             
             token_usage = {
@@ -212,13 +240,27 @@ class VertexAIService:
                 "cost_usd": cost_usd
             }
             
-            logger.info(f"Real Gemini {model} - Input: {input_tokens}, Output: {output_tokens}, Cost: ${cost_usd}")
+            logger.info(f"Real Gemini {actual_model} ({model}) - Input: {input_tokens}, Output: {output_tokens}, Cost: ${cost_usd}")
             
             return response_dict, token_usage
             
         except Exception as e:
             logger.error(f"Real Gemini API error: {e}")
-            raise
+            # Return error response instead of falling back to mock
+            error_response = {
+                "text": f"API Error: {str(e)}",
+                "model": model,
+                "finish_reason": "error",
+                "real_mode": False,
+                "error": str(e)
+            }
+            zero_usage = {
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "total_tokens": 0,
+                "cost_usd": 0.0
+            }
+            return error_response, zero_usage
     
     async def _run_mock_gemini(self, model: str, prompt: str, agent_name: str) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         """Fallback mock implementation"""
