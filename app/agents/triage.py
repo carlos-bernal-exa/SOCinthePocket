@@ -1,6 +1,7 @@
 from .base import AgentBase
 from ..adapters.neo4j_store import neo4j_store
 from ..adapters.redis_store import RedisStore
+from ..adapters.exabeam import ExabeamClient
 from typing import Dict, Any
 import os
 
@@ -8,26 +9,52 @@ class TriageAgent(AgentBase):
     def __init__(self):
         super().__init__(name="TriageAgent", model="gemini-2.5-flash", role="triage")
         self.redis_store = RedisStore(os.getenv("REDIS_URL", "redis://localhost:6379"))
+        self.exabeam_client = ExabeamClient()
     
     async def _format_prompt(self, prompt_content: str, inputs: Dict[str, Any]) -> str:
         """Format triage-specific prompt with automatic case data fetching"""
         case_id = inputs.get("case_id", "unknown")
         case_data = inputs.get("case_data", {})
         
-        # If no case data provided, try to fetch from Redis
-        if not case_data and case_id != "unknown":
+        # Always try to fetch from both sources for comprehensive context
+        if case_id != "unknown":
+            # Try to get existing analysis from Redis first
             try:
-                case_summary = await self.redis_store.get_summary(case_id)
-                if case_summary:
-                    case_data = case_summary
-                    self.logger.info(f"Retrieved case data for {case_id} from Redis")
-                else:
-                    self.logger.warning(f"No case data found for {case_id} in Redis")
+                redis_summary = await self.redis_store.get_summary(case_id)
+                if redis_summary:
+                    case_data = redis_summary
+                    self.logger.info(f"Retrieved existing analysis for {case_id} from Redis")
             except Exception as e:
-                self.logger.error(f"Failed to fetch case data for {case_id}: {e}")
+                self.logger.error(f"Failed to fetch Redis data for {case_id}: {e}")
+            
+            # Always try to get fresh SIEM data from Exabeam for context enrichment
+            try:
+                exabeam_data = await self.exabeam_client.get_case_data(case_id)
+                if exabeam_data:
+                    self.logger.info(f"Retrieved fresh SIEM data for {case_id} from Exabeam")
+                    # Merge Exabeam data with existing case data
+                    if case_data:
+                        # Add fresh SIEM data to existing analysis
+                        case_data['fresh_siem_data'] = exabeam_data
+                        case_data['data_sources'] = ['redis', 'exabeam']
+                    else:
+                        # Use Exabeam as primary source
+                        case_data = exabeam_data
+                        case_data['data_sources'] = ['exabeam']
+                else:
+                    self.logger.warning(f"No fresh SIEM data found for {case_id} in Exabeam")
+                    if case_data:
+                        case_data['data_sources'] = ['redis']
+            except Exception as exabeam_error:
+                self.logger.warning(f"Exabeam data retrieval failed for {case_id}: {exabeam_error}")
+                if case_data:
+                    case_data['data_sources'] = ['redis']
         
-        # Format case data for display
+        # Format case data for display with multi-source context
         if case_data:
+            data_sources = case_data.get('data_sources', ['unknown'])
+            source_info = f"Data Sources: {', '.join(data_sources)}"
+            
             case_display = f"""
 Case ID: {case_data.get('case_id', case_id)}
 Alert ID: {case_data.get('alert_id', 'N/A')}
@@ -36,6 +63,7 @@ Description: {case_data.get('description', 'N/A')}
 Current Status: {case_data.get('status', 'N/A')}
 Created: {case_data.get('created_at', 'N/A')}
 Existing Severity Assessment: {case_data.get('severity', 'N/A')}
+{source_info}
 
 Entities Found:
 {self._format_entities(case_data.get('entities', {}))}
@@ -44,8 +72,19 @@ Raw Investigation Data:
 - Threat Score: {case_data.get('raw_data', {}).get('threat_score', 'N/A')}
 - MITRE Tactics: {', '.join(case_data.get('raw_data', {}).get('mitre_tactics', []))}
 - Timeline Events: {len(case_data.get('raw_data', {}).get('timeline_events', []))} events
-- Investigation Type: {case_data.get('raw_data', {}).get('response_type', 'N/A')}
-"""
+- Investigation Type: {case_data.get('raw_data', {}).get('response_type', 'N/A')}"""
+
+            # Add fresh SIEM data if available
+            if 'fresh_siem_data' in case_data:
+                fresh_data = case_data['fresh_siem_data']
+                case_display += f"""
+
+Fresh SIEM Data from Exabeam:
+- Recent Events: {len(fresh_data.get('events', []))} new events
+- Additional Entities: {self._format_entities(fresh_data.get('entities', {}))}
+- Risk Indicators: {', '.join(fresh_data.get('risk_indicators', []))}
+- Related Cases: {len(fresh_data.get('related_cases', []))} related incidents
+- Context Score: {fresh_data.get('context_score', 'N/A')}"""
         else:
             case_display = f"No case data available for case ID: {case_id}"
         
@@ -53,9 +92,13 @@ Raw Investigation Data:
 
 Your role is to:
 1. Assess the severity and priority of the security incident
-2. Identify key entities (IPs, domains, users, files, etc.) from the case data
+2. Identify key entities (IPs, domains, users, files, etc.) from all available data sources
 3. Determine if immediate escalation is needed
-4. Suggest initial investigation steps based on the available evidence
+4. Suggest initial investigation steps based on comprehensive evidence
+5. Correlate information from historical analysis (Redis) with fresh SIEM data (Exabeam) when available
+
+IMPORTANT: Use both historical analysis data AND fresh SIEM data to make more context-driven decisions. 
+Fresh SIEM data provides current threat landscape and recent events that may change the risk assessment.
 
 {case_display}
 

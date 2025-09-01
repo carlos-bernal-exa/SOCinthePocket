@@ -251,6 +251,11 @@ class ExabeamClient:
         logger.info(f"Generated {len(mock_cases)} mock cases for testing")
         return mock_cases
     
+    async def get_case_data(self, case_id: str) -> Optional[Dict[str, Any]]:
+        """Get case data for a specific case ID"""
+        cases = await self.fetch_cases([case_id])
+        return cases[0] if cases else None
+    
     async def close(self):
         """Close the HTTP session"""
         if self.session:

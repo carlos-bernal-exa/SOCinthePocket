@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SOC Agent Platform Terminal</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Monaco', 'Consolas', monospace;
+            background: linear-gradient(135deg, #0f0f23 0%, #1a1a2e 50%, #16213e 100%);
+            color: #00ff41;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+        
+        .terminal-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 2px solid #00ff41;
+            border-radius: 10px;
+            background: rgba(0, 255, 65, 0.05);
+            box-shadow: 0 0 20px rgba(0, 255, 65, 0.3);
+        }
+        
+        .header h1 {
+            font-size: 2.2em;
+            margin-bottom: 10px;
+            text-shadow: 0 0 10px #00ff41;
+        }
+        
+        .tabs {
+            display: flex;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #00ff41;
+        }
+        
+        .tab {
+            padding: 12px 24px;
+            background: rgba(0, 255, 65, 0.1);
+            border: 1px solid #00ff41;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-right: 2px;
+        }
+        
+        .tab:hover {
+            background: rgba(0, 255, 65, 0.2);
+        }
+        
+        .tab.active {
+            background: #00ff41;
+            color: #0f0f23;
+            font-weight: bold;
+        }
+        
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        .dashboard-section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #00ff41;
+            border-radius: 8px;
+            background: rgba(0, 255, 65, 0.05);
+        }
+        
+        .section-title {
+            font-size: 1.4em;
+            margin-bottom: 15px;
+            color: #00ff41;
+            border-bottom: 1px solid #00ff41;
+            padding-bottom: 5px;
+        }
+        
+        .form-group {
+            margin-bottom: 15px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            color: #00ff41;
+        }
+        
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 10px;
+            background: rgba(0, 0, 0, 0.5);
+            border: 1px solid #00ff41;
+            border-radius: 4px;
+            color: #00ff41;
+            font-family: 'Monaco', 'Consolas', monospace;
+        }
+        
+        .btn {
+            padding: 12px 24px;
+            background: linear-gradient(45deg, #00ff41, #00cc33);
+            color: #0f0f23;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-family: 'Monaco', 'Consolas', monospace;
+            font-weight: bold;
+            transition: all 0.3s;
+            text-transform: uppercase;
+        }
+        
+        .btn:disabled {
+            background: #666;
+            cursor: not-allowed;
+        }
+        
+        .case-item {
+            padding: 15px;
+            margin-bottom: 10px;
+            border: 1px solid #00ff41;
+            border-radius: 6px;
+            background: rgba(0, 255, 65, 0.05);
+            cursor: pointer;
+        }
+        
+        .case-id {
+            font-weight: bold;
+            color: #00ff41;
+            margin-bottom: 5px;
+        }
+        
+        .metric-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .metric-card {
+            padding: 15px;
+            border: 1px solid #00ff41;
+            border-radius: 6px;
+            background: rgba(0, 255, 65, 0.05);
+            text-align: center;
+        }
+        
+        .metric-value {
+            font-size: 2em;
+            font-weight: bold;
+            color: #00ff41;
+            margin-bottom: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="terminal-container">
+        <div class="header">
+            <h1>SOC Agent Platform Terminal</h1>
+            <p>Multi-Agent AI Security Operations Center</p>
+        </div>
+        
+        <div class="tabs">
+            <div class="tab active" onclick="showTab('dashboard')">Dashboard</div>
+            <div class="tab" onclick="showTab('cases')">Cases</div>
+            <div class="tab" onclick="showTab('logs')">Logs</div>
+        </div>
+        
+        <div id="dashboard" class="tab-content active">
+            <div class="dashboard-section">
+                <div class="section-title">Case Analysis</div>
+                <div class="form-group">
+                    <label for="caseId">Case ID:</label>
+                    <input type="text" id="caseId" value="test-real-ai">
+                </div>
+                <div class="form-group">
+                    <label for="autonomyLevel">Autonomy Level:</label>
+                    <select id="autonomyLevel">
+                        <option value="autonomous">Autonomous</option>
+                        <option value="supervised">Supervised</option>
+                        <option value="manual">Manual</option>
+                    </select>
+                </div>
+                <button class="btn" id="analyzeBtn" onclick="analyzeCase()">
+                    Analyze Case
+                </button>
+            </div>
+            
+            <div class="dashboard-section">
+                <div class="section-title">System Status</div>
+                <div class="metric-grid">
+                    <div class="metric-card">
+                        <div class="metric-value" id="totalCases">0</div>
+                        <div class="metric-label">Total Cases</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-value" id="activeCases">0</div>
+                        <div class="metric-label">Active Cases</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div id="cases" class="tab-content">
+            <div class="dashboard-section">
+                <div class="section-title">Case History</div>
+                <div id="casesList">
+                    <div class="info">No cases analyzed yet.</div>
+                </div>
+            </div>
+        </div>
+        
+        <div id="logs" class="tab-content">
+            <div class="dashboard-section">
+                <div class="section-title">System Logs</div>
+                <div id="terminalOutput">
+                    <div class="success">[System] SOC Agent Platform Terminal initialized</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        var cases = [];
+
+        function showTab(tabName) {
+            var tabContents = document.getElementsByClassName('tab-content');
+            for (var i = 0; i < tabContents.length; i++) {
+                tabContents[i].classList.remove('active');
+            }
+
+            var tabs = document.getElementsByClassName('tab');
+            for (var i = 0; i < tabs.length; i++) {
+                tabs[i].classList.remove('active');
+            }
+
+            document.getElementById(tabName).classList.add('active');
+            event.target.classList.add('active');
+            
+            if (tabName === 'cases') {
+                loadCases();
+            }
+        }
+
+        function analyzeCase() {
+            var caseId = document.getElementById('caseId').value;
+            var autonomyLevel = document.getElementById('autonomyLevel').value;
+            
+            if (!caseId) {
+                alert('Please enter a case ID');
+                return;
+            }
+            
+            var analyzeBtn = document.getElementById('analyzeBtn');
+            analyzeBtn.disabled = true;
+            analyzeBtn.textContent = 'Analyzing...';
+            
+            var newCase = {
+                id: caseId,
+                status: 'analyzing',
+                startTime: new Date(),
+                autonomyLevel: autonomyLevel
+            };
+            cases.push(newCase);
+            updateMetrics();
+            
+            fetch('/cases/' + caseId + '/enrich', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    autonomy_level: autonomyLevel,
+                    max_depth: 3,
+                    include_raw_logs: false
+                })
+            })
+            .then(function(response) {
+                return response.json();
+            })
+            .then(function(data) {
+                analyzeBtn.disabled = false;
+                analyzeBtn.textContent = 'Analyze Case';
+                
+                if (data.error) {
+                    alert('Error: ' + data.error);
+                    updateCaseStatus(caseId, 'failed');
+                } else {
+                    alert('Analysis completed!');
+                    updateCaseStatus(caseId, 'completed', data);
+                }
+            })
+            .catch(function(error) {
+                analyzeBtn.disabled = false;
+                analyzeBtn.textContent = 'Analyze Case';
+                alert('Error: ' + error.message);
+                updateCaseStatus(caseId, 'failed');
+            });
+        }
+
+        function updateCaseStatus(caseId, status, data) {
+            for (var i = 0; i < cases.length; i++) {
+                if (cases[i].id === caseId) {
+                    cases[i].status = status;
+                    cases[i].endTime = new Date();
+                    if (data) {
+                        cases[i].data = data;
+                    }
+                    break;
+                }
+            }
+            updateMetrics();
+        }
+
+        function updateMetrics() {
+            var totalCases = cases.length;
+            var activeCases = 0;
+            
+            for (var i = 0; i < cases.length; i++) {
+                if (cases[i].status === 'analyzing') {
+                    activeCases++;
+                }
+            }
+            
+            document.getElementById('totalCases').textContent = totalCases;
+            document.getElementById('activeCases').textContent = activeCases;
+        }
+
+        function loadCases() {
+            var casesList = document.getElementById('casesList');
+            
+            if (cases.length === 0) {
+                casesList.innerHTML = '<div class="info">No cases analyzed yet.</div>';
+                return;
+            }
+            
+            var html = '';
+            for (var i = 0; i < cases.length; i++) {
+                var caseData = cases[i];
+                html += '<div class="case-item">';
+                html += '<div class="case-id">' + caseData.id + '</div>';
+                html += '<div>Status: ' + caseData.status.toUpperCase() + '</div>';
+                html += '<div>Started: ' + caseData.startTime.toLocaleTimeString() + '</div>';
+                
+                if (caseData.data) {
+                    html += '<div>Analysis completed successfully</div>';
+                }
+                
+                html += '</div>';
+            }
+            
+            casesList.innerHTML = html;
+        }
+
+        updateMetrics();
+    </script>
+</body>
+</html>

@@ -1,0 +1,24 @@
+[Unit]
+Description=Redis Case Data Sync Service
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /Users/cbernal/AIProjects/Claude/soc_agent_project/sync_redis.py --continuous --interval 300
+Restart=always
+RestartSec=30
+User=cbernal
+Group=staff
+WorkingDirectory=/Users/cbernal/AIProjects/Claude/soc_agent_project
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=redis-sync
+
+# Environment
+Environment=PYTHONPATH=/Users/cbernal/AIProjects/Claude/soc_agent_project
+
+[Install]
+WantedBy=multi-user.target

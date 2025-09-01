@@ -84,14 +84,14 @@ Respond with a structured execution plan."""
         """Select appropriate Gemini models for each agent based on execution mode"""
         model_assignments = {}
         
-        # Default model assignments
+        # Default model assignments - optimized for speed
         model_map = {
             "TriageAgent": "gemini-2.5-flash",
             "EnrichmentAgent": "gemini-2.5-flash", 
-            "InvestigationAgent": "gemini-2.5-pro",
-            "CorrelationAgent": "gemini-2.5-pro",
-            "ResponseAgent": "gemini-2.5-pro",
-            "ReportingAgent": "gemini-2.5-pro",
+            "InvestigationAgent": "gemini-2.5-flash",
+            "CorrelationAgent": "gemini-2.5-flash",
+            "ResponseAgent": "gemini-2.5-flash",
+            "ReportingAgent": "gemini-2.5-flash",
             "KnowledgeAgent": "gemini-2.5-flash-lite"
         }
         

@@ -1,0 +1,1194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SOC Agent Console</title>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/prop-types@15.8.1/prop-types.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+    <script src="https://unpkg.com/vis-network@9.1.9/dist/vis-network.min.js"></script>
+    <script src="https://unpkg.com/recharts@2.8.0/umd/Recharts.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/vis-network@9.1.9/styles/vis-network.min.css">
+    <style>
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+            margin: 0;
+            background: #0f1419;
+            color: #e6f1ff;
+        }
+        .glass {
+            backdrop-filter: blur(8px);
+            background: rgba(15, 20, 25, 0.8);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .card {
+            background: #1a202c;
+            border: 1px solid #2d3748;
+            border-radius: 0.5rem;
+            padding: 1rem;
+        }
+        .badge-analyzing { background: #f59e0b; color: #1f2937; }
+        .badge-completed { background: #10b981; color: #1f2937; }
+        .badge-failed { background: #ef4444; color: white; }
+        .badge-pending { background: #6366f1; color: white; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        // Components
+        function Badge({ variant, children, className = '' }) {
+            const variants = {
+                analyzing: 'badge-analyzing',
+                completed: 'badge-completed',
+                failed: 'badge-failed',
+                pending: 'badge-pending',
+                default: 'bg-gray-600 text-white'
+            };
+            
+            return (
+                <span className={`px-2 py-1 rounded-full text-xs font-medium ${variants[variant] || variants.default} ${className}`}>
+                    {children}
+                </span>
+            );
+        }
+
+        function Card({ title, children, className = '' }) {
+            return (
+                <div className={`card ${className}`}>
+                    {title && <h3 className="text-lg font-semibold mb-4 text-blue-400">{title}</h3>}
+                    {children}
+                </div>
+            );
+        }
+
+        function Button({ onClick, children, variant = 'primary', disabled = false, className = '' }) {
+            const variants = {
+                primary: 'bg-blue-600 hover:bg-blue-700 text-white',
+                secondary: 'bg-gray-600 hover:bg-gray-700 text-white',
+                success: 'bg-green-600 hover:bg-green-700 text-white',
+                danger: 'bg-red-600 hover:bg-red-700 text-white'
+            };
+            
+            return (
+                <button
+                    onClick={onClick}
+                    disabled={disabled}
+                    className={`px-4 py-2 rounded font-medium transition-colors ${variants[variant]} ${disabled ? 'opacity-50 cursor-not-allowed' : ''} ${className}`}
+                >
+                    {children}
+                </button>
+            );
+        }
+
+        // Active Investigations Dashboard
+        function ActiveInvestigations() {
+            const [cases, setCases] = useState([]);
+            const [loading, setLoading] = useState(true);
+            const [selectedCase, setSelectedCase] = useState(null);
+
+            useEffect(() => {
+                fetchCases();
+                const interval = setInterval(fetchCases, 5000);
+                return () => clearInterval(interval);
+            }, []);
+
+            const fetchCases = async () => {
+                try {
+                    const response = await fetch('/api/cases/active');
+                    const data = await response.json();
+                    setCases(data.cases || []);
+                } catch (error) {
+                    console.error('Failed to fetch cases:', error);
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            const startNewInvestigation = async () => {
+                const caseId = prompt('Enter Case ID:');
+                if (!caseId) return;
+
+                try {
+                    const response = await fetch(`/cases/${caseId}/enrich`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            autonomy_level: 'autonomous',
+                            max_depth: 3,
+                            include_raw_logs: false
+                        })
+                    });
+                    
+                    if (response.ok) {
+                        fetchCases();
+                    }
+                } catch (error) {
+                    console.error('Failed to start investigation:', error);
+                }
+            };
+
+            return (
+                <Card title="🔍 Active Investigations" className="col-span-2">
+                    <div className="flex justify-between items-center mb-4">
+                        <div className="text-sm text-gray-400">
+                            {cases.length} active case{cases.length !== 1 ? 's' : ''}
+                        </div>
+                        <Button onClick={startNewInvestigation} variant="primary">
+                            + New Investigation
+                        </Button>
+                    </div>
+
+                    {loading ? (
+                        <div className="text-center py-8 text-gray-400">Loading investigations...</div>
+                    ) : cases.length === 0 ? (
+                        <div className="text-center py-8 text-gray-400">
+                            No active investigations. Start a new case to begin.
+                        </div>
+                    ) : (
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-sm">
+                                <thead>
+                                    <tr className="border-b border-gray-700">
+                                        <th className="text-left py-2">Case ID</th>
+                                        <th className="text-left py-2">Status</th>
+                                        <th className="text-left py-2">Agents</th>
+                                        <th className="text-left py-2">Step</th>
+                                        <th className="text-left py-2">Elapsed</th>
+                                        <th className="text-left py-2">Cost</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {cases.map((case_) => (
+                                        <tr 
+                                            key={case_.id} 
+                                            className="border-b border-gray-800 hover:bg-gray-800 cursor-pointer"
+                                            onClick={() => setSelectedCase(case_)}
+                                        >
+                                            <td className="py-3 text-blue-400 font-mono">{case_.id}</td>
+                                            <td className="py-3">
+                                                <Badge variant={case_.status.toLowerCase()}>
+                                                    {case_.status}
+                                                </Badge>
+                                            </td>
+                                            <td className="py-3">{case_.agents_count || 0}</td>
+                                            <td className="py-3">{case_.current_step || 'Initializing'}</td>
+                                            <td className="py-3 text-gray-400">{case_.elapsed || '0m'}</td>
+                                            <td className="py-3 text-green-400">${case_.cost?.toFixed(4) || '0.0000'}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+
+                    {selectedCase && (
+                        <CaseDetailModal 
+                            case_={selectedCase} 
+                            onClose={() => setSelectedCase(null)} 
+                        />
+                    )}
+                </Card>
+            );
+        }
+
+        // Finished Analysis Dashboard
+        function FinishedAnalysis() {
+            const [completedCases, setCompletedCases] = useState([]);
+            const [loading, setLoading] = useState(true);
+            const [selectedCase, setSelectedCase] = useState(null);
+
+            useEffect(() => {
+                fetchCompletedCases();
+                const interval = setInterval(fetchCompletedCases, 10000); // Update less frequently
+                return () => clearInterval(interval);
+            }, []);
+
+            const fetchCompletedCases = async () => {
+                try {
+                    const response = await fetch('/api/cases/all');
+                    const data = await response.json();
+                    // Filter only completed cases
+                    const completed = (data.cases || []).filter(case_ => case_.raw_status === 'completed');
+                    setCompletedCases(completed);
+                } catch (error) {
+                    console.error('Failed to fetch completed cases:', error);
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            return (
+                <Card title="✅ Finished Analysis" className="col-span-2">
+                    <div className="flex justify-between items-center mb-4">
+                        <div className="text-sm text-gray-400">
+                            {completedCases.length} completed case{completedCases.length !== 1 ? 's' : ''}
+                        </div>
+                        <div className="text-xs text-gray-500">
+                            Showing recently completed investigations
+                        </div>
+                    </div>
+
+                    {loading ? (
+                        <div className="text-center py-8 text-gray-400">Loading completed cases...</div>
+                    ) : completedCases.length === 0 ? (
+                        <div className="text-center py-8 text-gray-400">
+                            <div className="text-4xl mb-2">📊</div>
+                            <div>No completed analysis yet</div>
+                            <div className="text-sm">Completed investigations will appear here</div>
+                        </div>
+                    ) : (
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-sm">
+                                <thead>
+                                    <tr className="border-b border-gray-700">
+                                        <th className="text-left py-2">Case ID</th>
+                                        <th className="text-left py-2">Title</th>
+                                        <th className="text-left py-2">Threat</th>
+                                        <th className="text-left py-2">Entities</th>
+                                        <th className="text-left py-2">Duration</th>
+                                        <th className="text-left py-2">Cost</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {completedCases.map((case_) => (
+                                        <tr 
+                                            key={case_.id} 
+                                            className="border-b border-gray-800 hover:bg-gray-800 cursor-pointer"
+                                            onClick={() => setSelectedCase(case_)}
+                                        >
+                                            <td className="py-3 text-blue-400 font-mono">{case_.id.slice(0, 8)}...</td>
+                                            <td className="py-3 text-gray-200 max-w-xs truncate">
+                                                {case_.title || `Case ${case_.id.slice(0, 8)}`}
+                                            </td>
+                                            <td className="py-3">
+                                                <Badge variant={
+                                                    case_.threat_classification?.toLowerCase() === 'undetermined' ? 'warning' : 
+                                                    case_.threat_classification?.toLowerCase() === 'malicious' ? 'danger' : 'success'
+                                                }>
+                                                    {case_.threat_classification || 'Unknown'}
+                                                </Badge>
+                                            </td>
+                                            <td className="py-3 text-gray-400">
+                                                {case_.entities?.length ? (
+                                                    <div className="flex space-x-1">
+                                                        {case_.entities.slice(0, 2).map((entity, idx) => (
+                                                            <span key={idx} className="inline-block bg-gray-700 text-xs px-2 py-1 rounded">
+                                                                {entity.type}: {entity.value.slice(0, 10)}...
+                                                            </span>
+                                                        ))}
+                                                        {case_.entities.length > 2 && (
+                                                            <span className="text-xs text-gray-500">+{case_.entities.length - 2}</span>
+                                                        )}
+                                                    </div>
+                                                ) : (
+                                                    <span className="text-gray-500">No entities</span>
+                                                )}
+                                            </td>
+                                            <td className="py-3 text-gray-400">{case_.elapsed || 'N/A'}</td>
+                                            <td className="py-3 text-green-400">${case_.cost?.toFixed(4) || '0.0000'}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+
+                    {selectedCase && (
+                        <CaseDetailModal 
+                            case_={selectedCase} 
+                            onClose={() => setSelectedCase(null)} 
+                        />
+                    )}
+                </Card>
+            );
+        }
+
+        // Case Detail Modal
+        function CaseDetailModal({ case_, onClose }) {
+            const [activeTab, setActiveTab] = useState('overview');
+            const [analysisData, setAnalysisData] = useState(null);
+            const [loadingAnalysis, setLoadingAnalysis] = useState(false);
+
+            // Fetch analysis data when modal opens or when switching to analysis tab
+            React.useEffect(() => {
+                if (activeTab === 'analysis' && case_.raw_status === 'completed') {
+                    fetchAnalysisData();
+                }
+            }, [activeTab, case_.id]);
+
+            const fetchAnalysisData = async () => {
+                if (loadingAnalysis || analysisData) return;
+                
+                setLoadingAnalysis(true);
+                try {
+                    const response = await fetch(`/api/cases/${case_.id}/analysis`);
+                    const data = await response.json();
+                    setAnalysisData(data.analysis);
+                } catch (error) {
+                    console.error('Failed to fetch analysis data:', error);
+                    setAnalysisData(null);
+                }
+                setLoadingAnalysis(false);
+            };
+
+            // Fetch analysis data for evidence tab as well
+            React.useEffect(() => {
+                if ((activeTab === 'evidence' || activeTab === 'analysis') && case_.raw_status === 'completed') {
+                    fetchAnalysisData();
+                }
+            }, [activeTab, case_.id]);
+
+            return (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                    <div className="glass max-w-4xl w-full max-h-[90vh] m-4 rounded-lg overflow-hidden">
+                        <div className="flex justify-between items-center p-4 border-b border-gray-700">
+                            <h2 className="text-xl font-semibold text-blue-400">
+                                Case {case_.id}
+                            </h2>
+                            <Button onClick={onClose} variant="secondary">×</Button>
+                        </div>
+
+                        <div className="flex border-b border-gray-700">
+                            {['overview', 'timeline', 'evidence', 'analysis', 'report'].map(tab => (
+                                <button
+                                    key={tab}
+                                    onClick={() => setActiveTab(tab)}
+                                    className={`px-4 py-2 text-sm font-medium capitalize ${
+                                        activeTab === tab 
+                                            ? 'text-blue-400 border-b-2 border-blue-400' 
+                                            : 'text-gray-400 hover:text-gray-200'
+                                    }`}
+                                >
+                                    {tab}
+                                </button>
+                            ))}
+                        </div>
+
+                        <div className="p-4 max-h-96 overflow-y-auto">
+                            {activeTab === 'overview' && (
+                                <div className="space-y-4">
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="text-sm text-gray-400">Status</label>
+                                            <div className="mt-1">
+                                                <Badge variant={case_.status.toLowerCase()}>
+                                                    {case_.status}
+                                                </Badge>
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <label className="text-sm text-gray-400">Cost</label>
+                                            <div className="mt-1 text-green-400">${case_.cost?.toFixed(4) || '0.0000'}</div>
+                                        </div>
+                                        <div>
+                                            <label className="text-sm text-gray-400">Agents</label>
+                                            <div className="mt-1">{case_.agents_count || 0}</div>
+                                        </div>
+                                        <div>
+                                            <label className="text-sm text-gray-400">Current Step</label>
+                                            <div className="mt-1">{case_.current_step || 'Initializing'}</div>
+                                        </div>
+                                    </div>
+                                    
+                                    {case_.entities && case_.entities.length > 0 && (
+                                        <div>
+                                            <label className="text-sm text-gray-400">Entities Found</label>
+                                            <div className="mt-2 space-y-1">
+                                                {case_.entities.map((entity, idx) => (
+                                                    <div key={idx} className="text-sm bg-gray-800 px-3 py-1 rounded">
+                                                        <span className="text-yellow-400">{entity.type}:</span> {entity.value}
+                                                        {entity.confidence && (
+                                                            <span className="text-gray-400 ml-2">
+                                                                ({(entity.confidence * 100).toFixed(0)}%)
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                            
+                            {activeTab === 'timeline' && (
+                                <div className="space-y-4">
+                                    <div className="glass p-4 rounded-lg">
+                                        <h3 className="text-lg font-semibold text-blue-400 mb-3">📅 Investigation Timeline</h3>
+                                        <div className="space-y-3">
+                                            <div className="flex items-center space-x-3 p-3 bg-blue-900/10 border-l-4 border-blue-500 rounded">
+                                                <div className="text-blue-400 text-sm font-mono">00:00</div>
+                                                <div className="text-gray-100">Case created and initialized</div>
+                                            </div>
+                                            <div className="flex items-center space-x-3 p-3 bg-purple-900/10 border-l-4 border-purple-500 rounded">
+                                                <div className="text-purple-400 text-sm font-mono">00:30</div>
+                                                <div className="text-gray-100">Entity extraction and triage completed</div>
+                                            </div>
+                                            <div className="flex items-center space-x-3 p-3 bg-orange-900/10 border-l-4 border-orange-500 rounded">
+                                                <div className="text-orange-400 text-sm font-mono">01:15</div>
+                                                <div className="text-gray-100">Enrichment and correlation analysis started</div>
+                                            </div>
+                                            <div className="flex items-center space-x-3 p-3 bg-green-900/10 border-l-4 border-green-500 rounded">
+                                                <div className="text-green-400 text-sm font-mono">03:00</div>
+                                                <div className="text-gray-100">Investigation completed with findings</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                            
+                            {activeTab === 'evidence' && (
+                                <div className="space-y-4">
+                                    {case_.raw_status !== 'completed' ? (
+                                        <div className="text-center py-8 text-gray-400">
+                                            <div className="text-4xl mb-2">📋</div>
+                                            <div>Evidence collection in progress</div>
+                                            <div className="text-sm">Evidence artifacts will be available once analysis is complete</div>
+                                        </div>
+                                    ) : loadingAnalysis ? (
+                                        <div className="text-center py-8 text-gray-400">
+                                            <div className="text-4xl mb-2">⏳</div>
+                                            <div>Loading evidence data...</div>
+                                        </div>
+                                    ) : (
+                                        <div className="glass p-4 rounded-lg">
+                                            <h3 className="text-lg font-semibold text-yellow-400 mb-3">🔍 Evidence Artifacts</h3>
+                                            <div className="space-y-3">
+                                                {/* Basic Case Information */}
+                                                <div className="p-3 bg-gray-800 rounded border border-gray-700">
+                                                    <div className="flex justify-between items-center mb-2">
+                                                        <span className="text-gray-300 font-medium">Case Overview</span>
+                                                        <Badge variant="secondary">Investigation</Badge>
+                                                    </div>
+                                                    <div className="space-y-1 text-sm text-gray-400">
+                                                        <div><strong>Title:</strong> {case_.title || 'N/A'}</div>
+                                                        <div><strong>Threat Classification:</strong> {case_.threat_classification || 'Unknown'}</div>
+                                                        <div><strong>Duration:</strong> {case_.elapsed || 'N/A'} • <strong>Cost:</strong> ${case_.cost?.toFixed(4) || '0.0000'}</div>
+                                                    </div>
+                                                </div>
+
+                                                {/* Extracted Entities */}
+                                                {case_.entities && case_.entities.length > 0 && (
+                                                    <div className="p-3 bg-gray-800 rounded border border-gray-700">
+                                                        <div className="flex justify-between items-center mb-2">
+                                                            <span className="text-gray-300 font-medium">Extracted Entities</span>
+                                                            <Badge variant="info">{case_.entities.length} items</Badge>
+                                                        </div>
+                                                        <div className="space-y-2">
+                                                            {case_.entities.map((entity, idx) => (
+                                                                <div key={idx} className="flex items-center justify-between p-2 bg-gray-700 rounded">
+                                                                    <div className="text-sm">
+                                                                        <span className="text-blue-400 font-medium">{entity.type}:</span>
+                                                                        <span className="text-gray-200 ml-2 font-mono">{entity.value}</span>
+                                                                    </div>
+                                                                    <Badge variant="success">{(entity.confidence * 100).toFixed(0)}%</Badge>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                )}
+
+                                                {/* Detections from Analysis */}
+                                                {analysisData?.detections && analysisData.detections.length > 0 && (
+                                                    <div className="p-3 bg-gray-800 rounded border border-gray-700">
+                                                        <div className="flex justify-between items-center mb-2">
+                                                            <span className="text-gray-300 font-medium">Security Detections</span>
+                                                            <Badge variant="danger">{analysisData.detections.length} alerts</Badge>
+                                                        </div>
+                                                        <div className="space-y-2 max-h-40 overflow-y-auto">
+                                                            {analysisData.detections.slice(0, 5).map((detection, idx) => (
+                                                                <div key={idx} className="p-2 bg-red-900/10 border border-red-800/30 rounded text-sm">
+                                                                    <div className="text-red-400 font-mono">#{detection.detection_id}</div>
+                                                                    <div className="text-gray-200 mt-1">{detection.description}</div>
+                                                                </div>
+                                                            ))}
+                                                            {analysisData.detections.length > 5 && (
+                                                                <div className="text-xs text-gray-500 text-center">
+                                                                    +{analysisData.detections.length - 5} more detections in Analysis tab
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                )}
+
+                                                {/* Investigation Metadata */}
+                                                <div className="p-3 bg-gray-800 rounded border border-gray-700">
+                                                    <div className="flex justify-between items-center mb-2">
+                                                        <span className="text-gray-300 font-medium">Investigation Metadata</span>
+                                                        <Badge variant={case_.raw_status === 'completed' ? 'success' : 'warning'}>
+                                                            {case_.status}
+                                                        </Badge>
+                                                    </div>
+                                                    <div className="grid grid-cols-2 gap-2 text-xs text-gray-400">
+                                                        <div><strong>Status:</strong> {case_.current_step || 'Unknown'}</div>
+                                                        <div><strong>Case ID:</strong> {case_.id.slice(0, 8)}...</div>
+                                                        {analysisData?.date_added && (
+                                                            <div><strong>Analysis Date:</strong> {new Date(analysisData.date_added).toLocaleDateString()}</div>
+                                                        )}
+                                                        {analysisData?.detection_update && (
+                                                            <div><strong>Detection Update:</strong> #{analysisData.detection_update}</div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                            
+                            {activeTab === 'analysis' && (
+                                <div className="space-y-4">
+                                    {case_.raw_status !== 'completed' ? (
+                                        <div className="text-center py-8 text-gray-400">
+                                            <div className="text-4xl mb-2">🔄</div>
+                                            <div>Analysis not yet completed</div>
+                                            <div className="text-sm">Analysis data will be available once the case investigation is finished</div>
+                                        </div>
+                                    ) : loadingAnalysis ? (
+                                        <div className="text-center py-8 text-gray-400">
+                                            <div className="text-4xl mb-2">⏳</div>
+                                            <div>Loading analysis data...</div>
+                                        </div>
+                                    ) : analysisData ? (
+                                        <div className="space-y-6">
+                                            {/* Case Summary */}
+                                            {analysisData.case_summary && (
+                                                <div className="glass p-4 rounded-lg">
+                                                    <h3 className="text-lg font-semibold text-blue-400 mb-3">📊 Executive Summary</h3>
+                                                    <div className="space-y-2">
+                                                        <div><strong className="text-gray-300">Title:</strong> <span className="text-gray-100">{analysisData.case_summary.title}</span></div>
+                                                        <div><strong className="text-gray-300">Summary:</strong> <span className="text-gray-100">{analysisData.case_summary.summary}</span></div>
+                                                        <div><strong className="text-gray-300">Threat Classification:</strong> 
+                                                            <Badge variant={analysisData.case_summary.threat_classification?.toLowerCase() === 'undetermined' ? 'warning' : 'danger'} className="ml-2">
+                                                                {analysisData.case_summary.threat_classification}
+                                                            </Badge>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* AI Analysis & Reasoning */}
+                                            {analysisData.case_analysis && (
+                                                <div className="glass p-4 rounded-lg">
+                                                    <h3 className="text-lg font-semibold text-purple-400 mb-3">🧠 AI Analysis</h3>
+                                                    <div className="space-y-3">
+                                                        {analysisData.case_analysis.reasoning && (
+                                                            <div>
+                                                                <strong className="text-gray-300">Reasoning:</strong>
+                                                                <div className="text-gray-100 mt-1 p-3 bg-gray-800 rounded text-sm">{analysisData.case_analysis.reasoning}</div>
+                                                            </div>
+                                                        )}
+                                                        {analysisData.case_analysis.escalation_potential && analysisData.case_analysis.escalation_potential.length > 0 && (
+                                                            <div>
+                                                                <strong className="text-gray-300">Escalation Potential:</strong>
+                                                                <ul className="text-gray-100 mt-1 space-y-1">
+                                                                    {analysisData.case_analysis.escalation_potential.map((potential, idx) => (
+                                                                        <li key={idx} className="text-sm bg-yellow-900/20 p-2 rounded">• {potential}</li>
+                                                                    ))}
+                                                                </ul>
+                                                            </div>
+                                                        )}
+                                                        {analysisData.case_analysis.threat_vector && analysisData.case_analysis.threat_vector.length > 0 && (
+                                                            <div>
+                                                                <strong className="text-gray-300">Threat Vectors:</strong>
+                                                                <div className="mt-1 flex flex-wrap gap-2">
+                                                                    {analysisData.case_analysis.threat_vector.map((vector, idx) => (
+                                                                        <Badge key={idx} variant="danger">{vector}</Badge>
+                                                                    ))}
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* Detections */}
+                                            {analysisData.detections && analysisData.detections.length > 0 && (
+                                                <div className="glass p-4 rounded-lg">
+                                                    <h3 className="text-lg font-semibold text-red-400 mb-3">🚨 Security Detections</h3>
+                                                    <div className="space-y-2">
+                                                        {analysisData.detections.map((detection, idx) => (
+                                                            <div key={idx} className="flex items-start space-x-3 p-3 bg-red-900/10 border border-red-800/30 rounded">
+                                                                <div className="text-red-400 font-mono text-sm mt-0.5">#{detection.detection_id}</div>
+                                                                <div className="text-gray-100 text-sm flex-1">{detection.description}</div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* Next Steps */}
+                                            {analysisData.next_steps && analysisData.next_steps.length > 0 && (
+                                                <div className="glass p-4 rounded-lg">
+                                                    <h3 className="text-lg font-semibold text-green-400 mb-3">📋 Recommended Next Steps</h3>
+                                                    <div className="space-y-2">
+                                                        {analysisData.next_steps.map((step, idx) => (
+                                                            <div key={idx} className="flex items-center space-x-3 p-2 bg-green-900/10 border border-green-800/30 rounded">
+                                                                <div className="text-green-400 font-bold">{idx + 1}.</div>
+                                                                <div className="text-gray-100 text-sm">{step}</div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* Metadata */}
+                                            <div className="glass p-4 rounded-lg">
+                                                <h3 className="text-lg font-semibold text-gray-400 mb-3">📅 Analysis Metadata</h3>
+                                                <div className="grid grid-cols-2 gap-4 text-sm">
+                                                    {analysisData.date_added && (
+                                                        <div><strong className="text-gray-300">Analysis Date:</strong> <span className="text-gray-100">{new Date(analysisData.date_added).toLocaleString()}</span></div>
+                                                    )}
+                                                    {analysisData.detection_update && (
+                                                        <div><strong className="text-gray-300">Detection Update:</strong> <span className="text-gray-100">#{analysisData.detection_update}</span></div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="text-center py-8 text-gray-400">
+                                            <div className="text-4xl mb-2">❌</div>
+                                            <div>No analysis data available</div>
+                                            <div className="text-sm">Analysis data could not be retrieved for this case</div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                            
+                            {activeTab === 'report' && (
+                                <div>
+                                    <div className="mb-4">
+                                        <h4 className="text-white mb-2">📄 Investigation Reports</h4>
+                                        <div className="space-x-2 mb-3">
+                                            <Button variant="success" onClick={() => downloadReport(case_.id, 'pdf')}>Download PDF</Button>
+                                            <Button variant="secondary" onClick={() => downloadReport(case_.id, 'markdown')}>Download Markdown</Button>
+                                            <Button variant="info" onClick={() => downloadReport(case_.id, 'investigation_json')}>Download JSON</Button>
+                                        </div>
+                                        <h4 className="text-white mb-2">🔍 Audit Reports</h4>
+                                        <div className="space-x-2">
+                                            <Button variant="secondary" onClick={() => downloadReport(case_.id, 'audit')}>Download Audit</Button>
+                                            <Button variant="info" onClick={() => downloadReport(case_.id, 'audit_json')}>Download Audit JSON</Button>
+                                        </div>
+                                    </div>
+                                    <div className="text-gray-400">Full investigation report will be displayed here</div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // Approval Center
+        function ApprovalCenter() {
+            const [approvals, setApprovals] = useState([]);
+            const [activeTab, setActiveTab] = useState('pending');
+
+            useEffect(() => {
+                fetchApprovals();
+                const interval = setInterval(fetchApprovals, 3000);
+                return () => clearInterval(interval);
+            }, []);
+
+            const fetchApprovals = async () => {
+                try {
+                    const response = await fetch('/api/approvals');
+                    const data = await response.json();
+                    setApprovals(data.approvals || []);
+                } catch (error) {
+                    console.error('Failed to fetch approvals:', error);
+                }
+            };
+
+            const handleDecision = async (approvalId, decision) => {
+                try {
+                    const endpoint = decision === 'approve' ? 'approve' : 'reject';
+                    await fetch(`/api/approvals/${approvalId}/${endpoint}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' }
+                    });
+                    fetchApprovals();
+                } catch (error) {
+                    console.error('Failed to process approval:', error);
+                }
+            };
+
+            const pendingCount = approvals.length;
+
+            return (
+                <Card title="✋ Approval Center" className="col-span-1">
+                    <div className="flex justify-between items-center mb-4">
+                        <div className="text-sm text-gray-400">
+                            {pendingCount} pending approval{pendingCount !== 1 ? 's' : ''}
+                        </div>
+                        <div className="text-xs text-gray-500">
+                            Real-time approval queue
+                        </div>
+                    </div>
+
+                    <div className="space-y-3 max-h-64 overflow-y-auto">
+                        {approvals.length === 0 ? (
+                            <div className="text-center text-gray-400 py-4">
+                                No {activeTab} approvals
+                            </div>
+                        ) : (
+                            approvals.map(approval => (
+                                <div key={approval.id} className="border border-gray-700 rounded p-3">
+                                    <div className="flex justify-between items-start mb-2">
+                                        <div className="text-sm">
+                                            <div className="text-blue-400 font-mono">{approval.case_id}</div>
+                                            <div className="text-gray-400">{approval.agent_name}</div>
+                                        </div>
+                                        <Badge variant="warning">
+                                            pending
+                                        </Badge>
+                                    </div>
+                                    
+                                    <div className="text-xs text-gray-300 mb-2">
+                                        {approval.description}
+                                    </div>
+                                    
+                                    <div className="text-xs text-gray-500 mb-3">
+                                        {new Date(approval.created_at).toLocaleString()}
+                                    </div>
+                                    
+                                    <div className="flex space-x-2">
+                                        <Button 
+                                            onClick={() => handleDecision(approval.id, 'approve')}
+                                            variant="success"
+                                            className="text-xs px-3 py-1"
+                                        >
+                                            Approve
+                                        </Button>
+                                        <Button 
+                                            onClick={() => handleDecision(approval.id, 'reject')}
+                                            variant="danger"
+                                            className="text-xs px-3 py-1"
+                                        >
+                                            Reject
+                                        </Button>
+                                        </div>
+                                    )}
+                                </div>
+                            ))
+                        )}
+                    </div>
+                </Card>
+            );
+        }
+
+        // Token Usage Chart
+        function TokenUsageChart() {
+            const [tokenStats, setTokenStats] = useState({ cost_today: 0, total_today: 0 });
+            const [data, setData] = useState([]);
+
+            useEffect(() => {
+                fetchTokenData();
+            }, []);
+
+            const fetchTokenData = async () => {
+                try {
+                    const response = await fetch('/api/stats/tokens');
+                    const result = await response.json();
+                    console.log('Token usage data received:', result);
+                    setData(result.daily_usage || []);
+                    setTokenStats({
+                        cost_today: result.cost_today || 0,
+                        total_today: result.total_today || 0
+                    });
+                } catch (error) {
+                    console.error('Failed to fetch token data:', error);
+                }
+            };
+
+            const formatCost = (cost) => {
+                return `$${cost.toFixed(6)}`; // Show actual number with 6 decimal places
+            };
+
+            const formatTokens = (tokens) => {
+                if (tokens >= 1000000) {
+                    return `${(tokens / 1000000).toFixed(1)}M`;
+                } else if (tokens >= 1000) {
+                    return `${(tokens / 1000).toFixed(1)}K`;
+                }
+                return tokens.toString();
+            };
+
+            return (
+                <Card title="📊 Token Usage & Costs" className="col-span-1">
+                    <div className="text-center text-gray-400 py-8">
+                        Chart visualization will be implemented with recharts
+                    </div>
+                    <div className="grid grid-cols-2 gap-4 mt-4">
+                        <div className="text-center">
+                            <div className="text-2xl font-bold text-green-400">{formatCost(tokenStats.cost_today)}</div>
+                            <div className="text-xs text-gray-400">Today's Cost</div>
+                        </div>
+                        <div className="text-center">
+                            <div className="text-2xl font-bold text-blue-400">{formatTokens(tokenStats.total_today)}</div>
+                            <div className="text-xs text-gray-400">Tokens Used</div>
+                        </div>
+                    </div>
+                </Card>
+            );
+        }
+
+        // Knowledge Graph
+        function KnowledgeGraph() {
+            const graphRef = useRef(null);
+            const fullscreenGraphRef = useRef(null);
+            const [graphData, setGraphData] = useState(null);
+            const [loading, setLoading] = useState(true);
+            const [isFullscreen, setIsFullscreen] = useState(false);
+
+            useEffect(() => {
+                fetchGraphData();
+                const interval = setInterval(fetchGraphData, 30000); // Update every 30 seconds
+                return () => clearInterval(interval);
+            }, []);
+
+            const fetchGraphData = async () => {
+                try {
+                    console.log('Fetching knowledge graph data...');
+                    const response = await fetch('/api/knowledge-graph');
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+                    const data = await response.json();
+                    console.log('Knowledge graph data received:', data.summary);
+                    setGraphData(data);
+                } catch (error) {
+                    console.error('Failed to fetch knowledge graph:', error);
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            const createNetwork = (container) => {
+                if (typeof vis !== 'undefined' && container && graphData) {
+                    const nodes = new vis.DataSet(graphData.nodes);
+                    const edges = new vis.DataSet(graphData.edges);
+                    
+                    return new vis.Network(container, { nodes, edges }, {
+                        nodes: { 
+                            shape: 'dot', 
+                            size: isFullscreen ? 25 : 20,
+                            font: { color: '#ffffff', size: isFullscreen ? 14 : 12 },
+                            borderWidth: 2,
+                            borderColor: '#ffffff'
+                        },
+                        edges: {
+                            color: '#666666',
+                            font: { color: '#cccccc', size: isFullscreen ? 12 : 10 },
+                            arrows: { to: { enabled: true } }
+                        },
+                        physics: { 
+                            stabilization: false,
+                            barnesHut: { 
+                                gravitationalConstant: isFullscreen ? -12000 : -8000, 
+                                springConstant: 0.001 
+                            }
+                        },
+                        interaction: { hover: true, tooltipDelay: 200 }
+                    });
+                }
+                return null;
+            };
+
+            useEffect(() => {
+                createNetwork(graphRef.current);
+            }, [graphData, isFullscreen]);
+
+            useEffect(() => {
+                if (isFullscreen) {
+                    // Small delay to ensure the fullscreen container is rendered
+                    setTimeout(() => {
+                        createNetwork(fullscreenGraphRef.current);
+                    }, 100);
+                }
+            }, [isFullscreen, graphData]);
+
+            const toggleFullscreen = () => {
+                setIsFullscreen(!isFullscreen);
+            };
+
+            return (
+                <>
+                    <Card title="🕸️ Knowledge Graph" className="col-span-1">
+                        <div className="flex justify-between items-center mb-2">
+                            <div className="text-sm text-gray-400">
+                                {graphData ? `${graphData.summary.total_nodes} nodes, ${graphData.summary.total_edges} edges` : 'Loading...'}
+                            </div>
+                            <div className="flex items-center space-x-2">
+                                <Button 
+                                    onClick={fetchGraphData}
+                                    variant="primary"
+                                    className="text-xs px-2 py-1"
+                                    disabled={loading}
+                                >
+                                    🔄 Refresh
+                                </Button>
+                                <Button 
+                                    onClick={toggleFullscreen}
+                                    variant="secondary"
+                                    className="text-xs px-2 py-1"
+                                >
+                                    ⛶ Fullscreen
+                                </Button>
+                                <div className="text-xs text-gray-500">
+                                    {loading ? 'Updating...' : 'Live data'}
+                                </div>
+                            </div>
+                        </div>
+                        <div 
+                            ref={graphRef}
+                            className="w-full h-64 bg-gray-900 rounded"
+                        >
+                            {loading && !graphData && (
+                                <div className="flex items-center justify-center h-full text-gray-400">
+                                    Loading knowledge graph...
+                                </div>
+                            )}
+                        </div>
+                    </Card>
+
+                    {/* Fullscreen Modal */}
+                    {isFullscreen && (
+                        <div className="fixed inset-0 z-50 bg-black bg-opacity-90 flex flex-col">
+                            <div className="flex justify-between items-center p-4 bg-gray-800 border-b border-gray-700">
+                                <h2 className="text-xl font-bold text-white">🕸️ Knowledge Graph - Fullscreen</h2>
+                                <div className="flex items-center space-x-4">
+                                    <div className="text-sm text-gray-400">
+                                        {graphData ? `${graphData.summary.total_nodes} nodes, ${graphData.summary.total_edges} edges` : 'Loading...'}
+                                    </div>
+                                    <div className="text-sm text-gray-500">
+                                        {graphData && graphData.summary.node_types ? `Types: ${graphData.summary.node_types.join(', ')}` : ''}
+                                    </div>
+                                    <Button 
+                                        onClick={toggleFullscreen}
+                                        variant="danger"
+                                        className="px-3 py-1"
+                                    >
+                                        ✕ Close
+                                    </Button>
+                                </div>
+                            </div>
+                            <div className="flex-1 p-4">
+                                <div 
+                                    ref={fullscreenGraphRef}
+                                    className="w-full h-full bg-gray-900 rounded"
+                                >
+                                    {loading && !graphData && (
+                                        <div className="flex items-center justify-center h-full text-gray-400">
+                                            Loading knowledge graph...
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </>
+            );
+        }
+
+        // Agent Marketplace
+        function AgentMarketplace() {
+            const [showHireDialog, setShowHireDialog] = useState(false);
+            const [agents, setAgents] = useState([]);
+
+            const hireAgent = () => {
+                setShowHireDialog(true);
+            };
+
+            return (
+                <Card title="🤖 Agent Marketplace" className="col-span-1">
+                    <div className="space-y-3">
+                        <Button onClick={hireAgent} variant="success" className="w-full">
+                            + Hire New Agent
+                        </Button>
+                        
+                        <div className="text-sm text-gray-400">
+                            Active Agents: {agents.length}/10
+                        </div>
+                        
+                        <div className="space-y-2">
+                            {['TriageAgent', 'EnrichmentAgent', 'InvestigationAgent'].map(agent => (
+                                <div key={agent} className="flex justify-between items-center p-2 bg-gray-800 rounded">
+                                    <span className="text-sm">{agent}</span>
+                                    <Badge variant="completed">Active</Badge>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    {showHireDialog && (
+                        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                            <div className="glass p-6 rounded-lg max-w-md w-full m-4">
+                                <h3 className="text-lg font-semibold mb-4">Hire New Agent</h3>
+                                <div className="space-y-4">
+                                    <div>
+                                        <label className="block text-sm text-gray-400">Agent Type</label>
+                                        <select className="w-full mt-1 p-2 bg-gray-800 border border-gray-700 rounded">
+                                            <option>InvestigationAgent</option>
+                                            <option>CorrelationAgent</option>
+                                            <option>ResponseAgent</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm text-gray-400">Model</label>
+                                        <select className="w-full mt-1 p-2 bg-gray-800 border border-gray-700 rounded">
+                                            <option>gemini-2.5-pro</option>
+                                            <option>gemini-2.5-flash</option>
+                                            <option>gemini-2.5-flash-lite</option>
+                                        </select>
+                                    </div>
+                                    <div className="flex space-x-2">
+                                        <Button onClick={() => setShowHireDialog(false)} variant="secondary">
+                                            Cancel
+                                        </Button>
+                                        <Button onClick={() => setShowHireDialog(false)} variant="success">
+                                            Hire Agent
+                                        </Button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </Card>
+            );
+        }
+
+        // Live Activity Feed
+        function LiveActivityFeed() {
+            const [activities, setActivities] = useState([
+                { id: 1, timestamp: new Date(), message: 'SOC Console initialized', type: 'info' },
+                { id: 2, timestamp: new Date(), message: 'Waiting for investigations...', type: 'info' }
+            ]);
+
+            useEffect(() => {
+                // In a real implementation, this would connect to WebSocket/SSE
+                const interval = setInterval(() => {
+                    // Mock activity
+                }, 10000);
+                return () => clearInterval(interval);
+            }, []);
+
+            return (
+                <Card title="🔴 Live Activity Feed" className="col-span-2">
+                    <div className="max-h-32 overflow-y-auto space-y-1">
+                        {activities.map(activity => (
+                            <div key={activity.id} className="flex items-center space-x-2 text-sm">
+                                <span className="text-gray-500 text-xs">
+                                    {activity.timestamp.toLocaleTimeString()}
+                                </span>
+                                <span className={activity.type === 'error' ? 'text-red-400' : 'text-gray-300'}>
+                                    {activity.message}
+                                </span>
+                            </div>
+                        ))}
+                    </div>
+                </Card>
+            );
+        }
+
+        // Download Report Function
+        const downloadReport = async (caseId, reportType) => {
+            try {
+                const response = await fetch(`/api/reports/${caseId}/download/${reportType}`);
+                
+                if (!response.ok) {
+                    throw new Error(`Failed to download report: ${response.statusText}`);
+                }
+                
+                // Get filename from response headers or create default
+                const contentDisposition = response.headers.get('Content-Disposition');
+                let filename = `${caseId}_${reportType}.md`;
+                if (contentDisposition) {
+                    const match = contentDisposition.match(/filename=(.+)/);
+                    if (match) {
+                        filename = match[1].replace(/['"]/g, '');
+                    }
+                }
+                
+                // Create blob and download
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.style.display = 'none';
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+                
+                console.log(`Downloaded ${reportType} report for case ${caseId}`);
+            } catch (error) {
+                console.error('Error downloading report:', error);
+                alert(`Failed to download report: ${error.message}`);
+            }
+        };
+
+        // Main App
+        function SOCConsole() {
+            const [currentTime, setCurrentTime] = useState(new Date());
+
+            useEffect(() => {
+                const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+                return () => clearInterval(timer);
+            }, []);
+
+            return (
+                <div className="min-h-screen p-6 bg-gradient-to-br from-gray-900 via-blue-900 to-gray-900">
+                    <header className="mb-8">
+                        <div className="flex justify-between items-center">
+                            <div>
+                                <h1 className="text-3xl font-bold text-blue-400">🛡️ SOC Agent Console</h1>
+                                <p className="text-gray-400">Multi-Agent AI Security Operations Center</p>
+                            </div>
+                            <div className="text-right">
+                                <div className="text-lg font-mono">{currentTime.toLocaleTimeString()}</div>
+                                <div className="text-sm text-gray-400">{currentTime.toLocaleDateString()}</div>
+                            </div>
+                        </div>
+                    </header>
+
+                    <div className="space-y-6">
+                        {/* Top Row - Investigations */}
+                        <div className="grid grid-cols-1 gap-6">
+                            <ActiveInvestigations />
+                        </div>
+                        
+                        {/* Second Row - Completed Analysis */}
+                        <div className="grid grid-cols-1 gap-6">
+                            <FinishedAnalysis />
+                        </div>
+                        
+                        {/* Bottom Rows - Other Components */}
+                        <div className="grid grid-cols-3 gap-6">
+                            <ApprovalCenter />
+                            <TokenUsageChart />
+                            <KnowledgeGraph />
+                        </div>
+                        
+                        <div className="grid grid-cols-2 gap-6">
+                            <AgentMarketplace />
+                            <LiveActivityFeed />
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<SOCConsole />);
+    </script>
+</body>
+</html>

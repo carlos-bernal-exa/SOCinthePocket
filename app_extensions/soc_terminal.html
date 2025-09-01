@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>SOC Platform Terminal</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <script src="https://unpkg.com/@sst/opentui@latest/dist/index.js"></script>
+    <style>
+        body { margin: 0; padding: 0; font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace; }
+        .terminal { height: 100vh; background: #1a1a1a; color: #00ff00; }
+    </style>
+</head>
+<body>
+    <div id="terminal" class="terminal"></div>
+    <script>
+        // Load configuration and initialize OpenTUI
+        fetch('./soc_terminal_config.json')
+            .then(response => response.json())
+            .then(config => {
+                const terminal = new OpenTUI(config);
+                terminal.mount('#terminal');
+            })
+            .catch(error => {
+                console.error('Failed to load terminal config:', error);
+                document.getElementById('terminal').innerHTML = 
+                    '<div style="padding: 20px;">❌ Failed to load terminal interface</div>';
+            });
+    </script>
+</body>
+</html>

@@ -227,5 +227,71 @@ class Neo4jStore:
             logger.error(f"Failed to upsert case entities: {e}")
             return False
 
+    async def get_graph_visualization_data(self, limit: int = 50):
+        """Get graph data for visualization in frontend"""
+        if not self.driver:
+            await self.connect()
+            
+        cypher = """
+        MATCH (n)-[r]->(m)
+        RETURN n, r, m
+        LIMIT $limit
+        """
+        
+        try:
+            with self.driver.session() as session:
+                result = session.run(cypher, limit=limit)
+                
+                nodes = {}
+                edges = []
+                
+                for record in result:
+                    n = record["n"]
+                    r = record["r"] 
+                    m = record["m"]
+                    
+                    # Add source node
+                    node_id = n.element_id
+                    if node_id not in nodes:
+                        labels = list(n.labels)
+                        # Use 'value' property if available, otherwise 'id', otherwise label
+                        label = n.get("value") or n.get("id") or (labels[0] if labels else "Node")
+                        nodes[node_id] = {
+                            "id": node_id,
+                            "label": label,
+                            "type": labels[0] if labels else "Unknown",
+                            "properties": dict(n)
+                        }
+                    
+                    # Add target node
+                    target_id = m.element_id
+                    if target_id not in nodes:
+                        labels = list(m.labels)
+                        # Use 'value' property if available, otherwise 'id', otherwise label
+                        label = m.get("value") or m.get("id") or (labels[0] if labels else "Node")
+                        nodes[target_id] = {
+                            "id": target_id,
+                            "label": label,
+                            "type": labels[0] if labels else "Unknown", 
+                            "properties": dict(m)
+                        }
+                    
+                    # Add edge
+                    edges.append({
+                        "from": node_id,
+                        "to": target_id,
+                        "relationship": r.type,
+                        "properties": dict(r)
+                    })
+                
+                return {
+                    "nodes": list(nodes.values()),
+                    "edges": edges
+                }
+                
+        except Exception as e:
+            logger.error(f"Failed to get graph visualization data: {e}")
+            return {"nodes": [], "edges": []}
+
 # Global instance
 neo4j_store = Neo4jStore()

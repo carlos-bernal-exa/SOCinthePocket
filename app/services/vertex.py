@@ -11,8 +11,10 @@ import logging
 try:
     import google.generativeai as genai
     GENAI_AVAILABLE = True
-except ImportError:
+    print("✅ Google Generative AI library loaded successfully")
+except ImportError as e:
     GENAI_AVAILABLE = False
+    print(f"❌ Failed to import google.generativeai: {e}")
 
 logger = logging.getLogger(__name__)
 
